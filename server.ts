@@ -177,15 +177,13 @@ async function startServer() {
         parents: [DRIVE_FOLDER_ID]
       };
 
-      const media = {
-        mimeType: req.file.mimetype,
-        body: Readable.from(req.file.buffer)
-      };
-
-      const file: any = await drive.files.create({
+      const file = await (drive.files.create as any)({
         auth,
-        resource: fileMetadata,
-        media,
+        requestBody: fileMetadata,
+        media: {
+          mimeType: req.file.mimetype,
+          body: Readable.from(req.file.buffer)
+        },
         fields: 'id, name, thumbnailLink, webViewLink'
       });
 
