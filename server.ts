@@ -182,7 +182,7 @@ async function startServer() {
         body: Readable.from(req.file.buffer)
       };
 
-      const file = await drive.files.create({
+      const file: any = await drive.files.create({
         auth,
         resource: fileMetadata,
         media,
@@ -262,7 +262,7 @@ async function startServer() {
         });
       }
       
-      const doc = await sheets.spreadsheets.get({
+      const doc: any = await sheets.spreadsheets.get({
         spreadsheetId: SHEET_ID,
         auth
       });
@@ -298,7 +298,7 @@ async function startServer() {
 
     try {
       
-      const response = await sheets.spreadsheets.values.get({
+      const response: any = await sheets.spreadsheets.values.get({
         auth,
         spreadsheetId: SHEET_ID,
         range: "'CLIENTES'!A2:L",
@@ -342,7 +342,7 @@ async function startServer() {
 
     try {
 
-      const response = await sheets.spreadsheets.values.get({
+      const response: any = await sheets.spreadsheets.values.get({
         auth,
         spreadsheetId: SHEET_ID,
         range: "'MASTER_DATA'!A2:AN", // Extended to include Category hierarchy Columns
@@ -492,7 +492,7 @@ async function startServer() {
       const p = req.body;
 
       // 1. Get all rows to find the match
-      const getRes = await sheets.spreadsheets.values.get({
+      const getRes: any = await sheets.spreadsheets.values.get({
         auth,
         spreadsheetId: SHEET_ID,
         range: "'MASTER_DATA'!A:A",
