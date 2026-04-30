@@ -65,7 +65,7 @@ async function startServer() {
     }
   });
 
-  const SHEET_ID = process.env.GOOGLE_SHEET_ID || '1oL2P2AqClcusAJB4pFKx2RZXX2L6FqJIU5ElBg0A0Hc';
+  const SHEET_ID = '1oL2P2AqClcusAJB4pFKx2RZXX2L6FqJIU5ElBg0A0Hc';
   
   const getCleanAuth = () => {
     const rawEmailInput = (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || '').trim();
