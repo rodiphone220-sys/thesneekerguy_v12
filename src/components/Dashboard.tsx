@@ -24,6 +24,13 @@ interface DashboardProps {
 const COLORS = ['#000000', '#4F46E5', '#10B981', '#F59E0B', '#EF4444'];
 
 export function Dashboard({ products, onNavigate }: DashboardProps) {
+  const [chartReady, setChartReady] = React.useState(false);
+  
+  React.useEffect(() => {
+    const timer = setTimeout(() => setChartReady(true), 100);
+    return () => clearTimeout(timer);
+  }, []);
+
   const stats: DashboardStats = React.useMemo(() => {
     const s: DashboardStats = {
       totalItems: products.reduce((acc, p) => acc + (Number(p.quantity) || 0), 0),
@@ -62,9 +69,13 @@ export function Dashboard({ products, onNavigate }: DashboardProps) {
     value 
   }));
   const stockData = products
+    .filter(p => p.quantity > 0)
     .sort((a, b) => b.quantity - a.quantity)
     .slice(0, 8)
     .map(p => ({ name: p.name.split(' ')[0], stock: p.quantity }));
+
+  const hasStatusData = statusData.some(d => d.value > 0);
+  const hasStockData = stockData.length > 0;
 
   return (
     <div className="space-y-4 lg:space-y-8">
@@ -100,24 +111,28 @@ export function Dashboard({ products, onNavigate }: DashboardProps) {
              <h3 className="font-bold text-xs lg:text-sm tracking-tight text-brand-ink">Distribución por Status</h3>
           </div>
           <div className="flex-1 w-full min-h-[250px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={statusData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={80}
-                  paddingAngle={2}
-                  dataKey="value"
-                >
-                  {statusData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={index === 0 ? '#1A1A1A' : COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
+            {chartReady && hasStatusData ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={statusData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={80}
+                    paddingAngle={2}
+                    dataKey="value"
+                  >
+                    {statusData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={index === 0 ? '#1A1A1A' : COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-brand-muted text-xs">Sin datos</div>
+            )}
           </div>
         </div>
 
@@ -126,15 +141,19 @@ export function Dashboard({ products, onNavigate }: DashboardProps) {
              <h3 className="font-bold text-xs lg:text-sm tracking-tight text-brand-ink">Niveles de Inventario</h3>
           </div>
           <div className="flex-1 w-full min-h-[250px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={stockData}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="currentColor" className="opacity-10" />
-                <XAxis dataKey="name" fontSize={10} tickLine={false} axisLine={false} tick={{fill: 'var(--brand-muted)'}} />
-                <YAxis fontSize={10} tickLine={false} axisLine={false} tick={{fill: 'var(--brand-muted)'}} />
-                <Tooltip cursor={{ fill: 'var(--brand-bg)' }} contentStyle={{ backgroundColor: 'var(--brand-surface)', borderColor: 'var(--brand-border)', color: 'var(--brand-ink)', fontSize: '10px' }} />
-                <Bar dataKey="stock" fill="var(--brand-ink)" radius={[2, 2, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            {chartReady && hasStockData ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={stockData}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="currentColor" className="opacity-10" />
+                  <XAxis dataKey="name" fontSize={10} tickLine={false} axisLine={false} tick={{fill: 'var(--brand-muted)'}} />
+                  <YAxis fontSize={10} tickLine={false} axisLine={false} tick={{fill: 'var(--brand-muted)'}} />
+                  <Tooltip cursor={{ fill: 'var(--brand-bg)' }} contentStyle={{ backgroundColor: 'var(--brand-surface)', borderColor: 'var(--brand-border)', color: 'var(--brand-ink)', fontSize: '10px' }} />
+                  <Bar dataKey="stock" fill="var(--brand-ink)" radius={[2, 2, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-brand-muted text-xs">Sin datos</div>
+            )}
           </div>
         </div>
       </div>

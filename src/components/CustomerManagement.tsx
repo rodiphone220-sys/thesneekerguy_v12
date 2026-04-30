@@ -248,7 +248,7 @@ export function CustomerManagement({
       {/* Add/Edit Form Modal */}
       <AnimatePresence>
         {showAddForm && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4">
             <motion.div 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -260,173 +260,107 @@ export function CustomerManagement({
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="bg-white w-full max-w-2xl rounded-[40px] overflow-hidden shadow-2xl relative z-10"
+              className="bg-white w-full max-w-2xl max-h-[90vh] rounded-[32px] overflow-hidden shadow-2xl relative z-10 flex flex-col"
             >
-              <div className="p-10">
-                <div className="flex justify-between items-center mb-10">
+              <div className="p-6 sm:p-8 flex-shrink-0">
+                <div className="flex justify-between items-center mb-6">
                   <div>
-                    <h3 className="text-2xl font-black text-brand-ink uppercase tracking-tight italic">
-                      {editingCustomer ? 'Editar Cliente' : 'Alta de Nuevo Cliente'}
+                    <h3 className="text-xl sm:text-2xl font-black text-brand-ink uppercase tracking-tight italic">
+                      {editingCustomer ? 'Editar Cliente' : 'Nuevo Cliente'}
                     </h3>
-                    <p className="text-[10px] font-bold text-brand-muted uppercase tracking-[0.2em]">Registro Master CRM</p>
+                    <p className="text-[10px] font-bold text-brand-muted uppercase tracking-[0.2em]">Registro CRM</p>
                   </div>
                   <button 
                     onClick={() => setShowAddForm(false)}
-                    className="w-12 h-12 bg-brand-bg border border-brand-border rounded-2xl flex items-center justify-center text-brand-muted hover:text-brand-ink transition-colors"
+                    className="w-10 h-10 bg-brand-bg border border-brand-border rounded-2xl flex items-center justify-center text-brand-muted hover:text-brand-ink transition-colors"
                   >
-                    <X size={24} />
+                    <X size={20} />
                   </button>
                 </div>
-
-                <form onSubmit={handleSubmit} className="space-y-6">
-                  <div className="grid grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black text-brand-muted uppercase tracking-widest ml-1">Nombre Completo *</label>
-                      <input 
-                        required
-                        type="text" 
-                        value={newCustomer.name}
-                        onChange={e => setNewCustomer({...newCustomer, name: e.target.value})}
-                        placeholder="Ej. Rod Fernández"
-                        className="w-full px-6 py-4 bg-brand-bg border-2 border-brand-border rounded-2xl text-sm font-bold outline-none focus:border-brand-ink transition-all"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                       <label className="text-[10px] font-black text-brand-muted uppercase tracking-widest ml-1">WhatsApp / Teléfono</label>
-                       <input 
-                        type="text" 
-                        value={newCustomer.phone}
-                        onChange={e => setNewCustomer({...newCustomer, phone: e.target.value})}
-                        placeholder="52833..."
-                        className="w-full px-6 py-4 bg-brand-bg border-2 border-brand-border rounded-2xl text-sm font-bold outline-none focus:border-brand-ink transition-all"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black text-brand-muted uppercase tracking-widest ml-1">Correo Electrónico</label>
-                      <input 
-                        type="email" 
-                        value={newCustomer.email}
-                        onChange={e => setNewCustomer({...newCustomer, email: e.target.value})}
-                        placeholder="ejemplo@correo.com"
-                        className="w-full px-6 py-4 bg-brand-bg border-2 border-brand-border rounded-2xl text-sm font-bold outline-none focus:border-brand-ink transition-all"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                       <label className="text-[10px] font-black text-brand-muted uppercase tracking-widest ml-1">Método de Pago Preferido</label>
-                       <select 
-                        value={newCustomer.tipo_de_pago}
-                        onChange={e => setNewCustomer({...newCustomer, tipo_de_pago: e.target.value})}
-                        className="w-full px-6 py-4 bg-brand-bg border-2 border-brand-border rounded-2xl text-sm font-bold outline-none focus:border-brand-ink appearance-none transition-all"
-                       >
-                         <option value="Transferencia">Transferencia</option>
-                         <option value="Efectivo">Efectivo</option>
-                         <option value="Tarjeta">Tarjeta de Crédito</option>
-                         <option value="Pago 50%">Pago 50% / Anticipo</option>
-                         <option value="Pagado">Liquidado</option>
-                       </select>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                       <label className="text-[10px] font-black text-brand-muted uppercase tracking-widest ml-1">Prioridad</label>
-                       <select 
-                        value={(newCustomer as any).prioridad || 'Normal'}
-                        onChange={e => setNewCustomer({...newCustomer, prioridad: e.target.value as any})}
-                        className="w-full px-6 py-4 bg-brand-bg border-2 border-brand-border rounded-2xl text-sm font-bold outline-none focus:border-brand-ink appearance-none transition-all"
-                       >
-                         <option value="Normal">Normal</option>
-                         <option value="Alta">Alta</option>
-                         <option value="Urgente">Urgente</option>
-                       </select>
-                    </div>
-                    <div className="space-y-2">
-                       <label className="text-[10px] font-black text-brand-muted uppercase tracking-widest ml-1">Status</label>
-                       <select 
-                        value={(newCustomer as any).status || 'Activo'}
-                        onChange={e => setNewCustomer({...newCustomer, status: e.target.value as any})}
-                        className="w-full px-6 py-4 bg-brand-bg border-2 border-brand-border rounded-2xl text-sm font-bold outline-none focus:border-brand-ink appearance-none transition-all"
-                       >
-                         <option value="Activo">Activo</option>
-                         <option value="Inactivo">Inactivo</option>
-                         <option value="Prospecto">Prospecto</option>
-                       </select>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-brand-muted uppercase tracking-widest ml-1">Ciudad / Estado / Dirección</label>
-                    <input 
-                      type="text" 
-                      value={newCustomer.address}
-                      onChange={e => setNewCustomer({...newCustomer, address: e.target.value})}
-                      placeholder="Ej. Tampico, TAM / GPS Data"
-                      className="w-full px-6 py-4 bg-brand-bg border-2 border-brand-border rounded-2xl text-sm font-bold outline-none focus:border-brand-ink transition-all"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-brand-muted uppercase tracking-widest ml-1">Notas Internas</label>
-                    <textarea 
-                      rows={3}
-                      value={newCustomer.notes}
-                      onChange={e => setNewCustomer({...newCustomer, notes: e.target.value})}
-                      placeholder="Prioridad del cliente, preferencias, etc."
-                      className="w-full px-6 py-4 bg-brand-bg border-2 border-brand-border rounded-2xl text-sm font-bold outline-none focus:border-brand-ink transition-all resize-none"
-                    />
-                  </div>
-
-                  <div className="space-y-4 pt-4 border-t border-brand-border/50">
-                    <div className="flex items-center gap-2 mb-2">
-                       <Zap size={14} className="text-brand-accent" />
-                       <span className="text-[10px] font-black text-brand-ink uppercase tracking-[0.2em]">Preferencias de Compra</span>
-                    </div>
-                    <div className="grid grid-cols-3 gap-4">
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-black text-brand-muted uppercase tracking-widest ml-1">Modelo</label>
-                        <input 
-                          type="text" 
-                          value={(newCustomer as any).modelo || ''}
-                          onChange={e => setNewCustomer({...newCustomer, modelo: e.target.value})}
-                          placeholder="FOG / Dunk"
-                          className="w-full px-4 py-3 bg-brand-bg border border-brand-border rounded-xl text-xs font-bold outline-none focus:border-brand-ink transition-all"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-black text-brand-muted uppercase tracking-widest ml-1">Talla</label>
-                        <input 
-                          type="text" 
-                          value={(newCustomer as any).talla || ''}
-                          onChange={e => setNewCustomer({...newCustomer, talla: e.target.value})}
-                          placeholder="10 US"
-                          className="w-full px-4 py-3 bg-brand-bg border border-brand-border rounded-xl text-xs font-bold outline-none focus:border-brand-ink transition-all"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-black text-brand-muted uppercase tracking-widest ml-1">Cantidad</label>
-                        <input 
-                          type="number" 
-                          value={(newCustomer as any).cantidad || 1}
-                          onChange={e => setNewCustomer({...newCustomer, cantidad: parseInt(e.target.value)})}
-                          className="w-full px-4 py-3 bg-brand-bg border border-brand-border rounded-xl text-xs font-bold outline-none focus:border-brand-ink transition-all"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="pt-6">
-                    <button 
-                      type="submit"
-                      className="w-full bg-brand-ink text-white py-5 rounded-3xl text-sm font-black uppercase tracking-[0.3em] shadow-2xl shadow-brand-ink/30 hover:scale-[1.02] active:scale-95 transition-all"
-                    >
-                      {editingCustomer ? 'Actualizar Registro' : 'Guardar Cliente en CRM'}
-                    </button>
-                  </div>
-                </form>
               </div>
+
+              <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-4 sm:px-6 pb-6 space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-brand-muted uppercase tracking-widest ml-1">Nombre *</label>
+                    <input 
+                      required
+                      type="text" 
+                      value={newCustomer.name}
+                      onChange={e => setNewCustomer({...newCustomer, name: e.target.value})}
+                      placeholder="Nombre completo"
+                      className="w-full px-4 py-3 bg-brand-bg border-2 border-brand-border rounded-xl text-sm font-bold outline-none focus:border-brand-ink transition-all"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                     <label className="text-[10px] font-black text-brand-muted uppercase tracking-widest ml-1">Teléfono</label>
+                     <input 
+                      type="text" 
+                      value={newCustomer.phone}
+                      onChange={e => setNewCustomer({...newCustomer, phone: e.target.value})}
+                      placeholder="WhatsApp"
+                      className="w-full px-4 py-3 bg-brand-bg border-2 border-brand-border rounded-xl text-sm font-bold outline-none focus:border-brand-ink transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-brand-muted uppercase tracking-widest ml-1">Correo</label>
+                    <input 
+                      type="email" 
+                      value={newCustomer.email}
+                      onChange={e => setNewCustomer({...newCustomer, email: e.target.value})}
+                      placeholder="email@correo.com"
+                      className="w-full px-4 py-3 bg-brand-bg border-2 border-brand-border rounded-xl text-sm font-bold outline-none focus:border-brand-ink transition-all"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                     <label className="text-[10px] font-black text-brand-muted uppercase tracking-widest ml-1">Pago</label>
+                     <select 
+                      value={newCustomer.tipo_de_pago}
+                      onChange={e => setNewCustomer({...newCustomer, tipo_de_pago: e.target.value})}
+                      className="w-full px-4 py-3 bg-brand-bg border-2 border-brand-border rounded-xl text-sm font-bold outline-none focus:border-brand-ink appearance-none transition-all"
+                     >
+                      <option value="Transferencia">Transferencia</option>
+                      <option value="Efectivo">Efectivo</option>
+                      <option value="Tarjeta">Tarjeta</option>
+                      <option value="Anticipo">Anticipo</option>
+                     </select>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-brand-muted uppercase tracking-widest ml-1">Dirección</label>
+                  <input 
+                    type="text" 
+                    value={newCustomer.address}
+                    onChange={e => setNewCustomer({...newCustomer, address: e.target.value})}
+                    placeholder="Ciudad, Estado"
+                    className="w-full px-4 py-3 bg-brand-bg border-2 border-brand-border rounded-xl text-sm font-bold outline-none focus:border-brand-ink transition-all"
+                  />
+                </div>
+
+                <div className="space-y-1">
+<label className="text-[10px] font-black text-brand-muted uppercase tracking-widest ml-1">Notas</label>
+                  <textarea 
+                    rows={2}
+                    value={newCustomer.notes}
+                    onChange={e => setNewCustomer({...newCustomer, notes: e.target.value})}
+                    placeholder="Notas del cliente..."
+                    className="w-full px-4 py-3 bg-brand-bg border-2 border-brand-border rounded-xl text-sm font-bold outline-none focus:border-brand-ink transition-all resize-none"
+                  />
+                </div>
+
+                <div className="pt-4">
+                  <button 
+                    type="submit"
+                    className="w-full bg-brand-ink text-white py-4 rounded-2xl text-sm font-black uppercase tracking-[0.3em] shadow-lg hover:scale-[1.01] active:scale-95 transition-all"
+                  >
+                    {editingCustomer ? 'Actualizar' : 'Guardar Cliente'}
+                  </button>
+                </div>
+              </form>
             </motion.div>
           </div>
         )}

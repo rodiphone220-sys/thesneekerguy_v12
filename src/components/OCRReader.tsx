@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   X, 
   Upload, 
@@ -65,6 +65,7 @@ interface LectorOCRProps {
 export function LectorOCR({ onScan, onUpdate, currentItem, isScanning }: LectorOCRProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const [isUploadingBasic, setIsUploadingBasic] = useState(false);
   const previewUrl = useObjectURL(selectedFile);
   
   const imageUrls = currentItem.imageUrls || [];
@@ -75,29 +76,52 @@ export function LectorOCR({ onScan, onUpdate, currentItem, isScanning }: LectorO
     onScan(file);
   };
 
+  const handlePaste = useCallback(async (e: ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items || isScanning || isUploadingBasic) return;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf("image") !== -1) {
+        const blob = items[i].getAsFile();
+        if (blob) {
+          const objectUrl = URL.createObjectURL(blob);
+          const currentImages = currentItem.imageUrls || [];
+          onUpdate({ imageUrls: [...currentImages, objectUrl] } as any);
+          setSelectedFile(blob);
+        }
+        e.preventDefault();
+      }
+    }
+  }, [isScanning, isUploadingBasic, currentItem, onUpdate]);
+
+  useEffect(() => {
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, [handlePaste]);
+
   const handleBaseImage = async (file: File) => {
+    setIsUploadingBasic(true);
     const formData = new FormData();
     formData.append('file', file);
     
     try {
-      const res = await fetch('http://localhost:3000/api/upload', {
+      const res = await fetch('/api/upload', {
         method: 'POST',
         body: formData
       });
       const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Error al subir imagen. Cloudinary no está configurado.');
+        return;
+      }
       if (data.link) {
         const currentImages = currentItem.imageUrls || [];
         onUpdate({ imageUrls: [...currentImages, data.link] } as any);
       }
     } catch (error) {
       console.error('Upload failed:', error);
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const base64 = event.target?.result as string;
-        const currentImages = currentItem.imageUrls || [];
-        onUpdate({ imageUrls: [...currentImages, base64] } as any);
-      };
-      reader.readAsDataURL(file);
+      alert('Error de conexión al subir imagen');
+    } finally {
+      setIsUploadingBasic(false);
     }
   };
 
@@ -106,7 +130,7 @@ export function LectorOCR({ onScan, onUpdate, currentItem, isScanning }: LectorO
       <ImageDropzone 
         onFileSelect={handleFile}
         displayImage={displayImage}
-        isScanning={isScanning}
+        isScanning={isScanning || isUploadingBasic}
         onReset={() => {
           setSelectedFile(null);
           onUpdate({ imageUrls: [] } as any);
@@ -134,19 +158,20 @@ export function LectorOCR({ onScan, onUpdate, currentItem, isScanning }: LectorO
 
         <label className={cn(
           "py-3 rounded-xl flex items-center justify-center gap-2 font-black text-[10px] uppercase tracking-wider transition-all border-2 border-dashed cursor-pointer",
-          "bg-white border-brand-border text-brand-ink hover:bg-brand-surface"
+          isUploadingBasic ? "bg-brand-surface border-brand-ink" : "bg-white border-brand-border text-brand-ink hover:bg-brand-surface"
         )}>
           <input 
             type="file" 
             accept="image/*"
             className="hidden"
+            disabled={isUploadingBasic}
             onChange={(e) => {
               const file = e.target.files?.[0];
               if (file) handleBaseImage(file);
             }}
           />
-          <Upload size={16} />
-          Imagen Base
+          {isUploadingBasic ? <Loader2 className="animate-spin" size={16} /> : <Upload size={16} />}
+          {isUploadingBasic ? "Subiendo..." : "Imagen Base"}
         </label>
       </div>
 

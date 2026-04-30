@@ -4,24 +4,36 @@ import { google } from 'googleapis';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
-import fs from 'fs';
 import multer from 'multer';
-import { Readable } from 'stream';
 import { v2 as cloudinary } from 'cloudinary';
-
-dotenv.config();
-
-// Configure Cloudinary
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+dotenv.config({ path: path.resolve(__dirname, '.env') });
+
 async function startServer() {
+  // Configuración exacta como en el ejemplo de Cloudinary
+  const urlParts = process.env.CLOUDINARY_URL?.match(/cloudinary:\/\/([^:]+):(.+)@(\w+)/);
+  const cloudName = urlParts ? urlParts[3] : process.env.CLOUDINARY_CLOUD_NAME;
+  const apiKey = urlParts ? urlParts[1] : process.env.CLOUDINARY_API_KEY;
+  const apiSecret = urlParts ? urlParts[2] : process.env.CLOUDINARY_API_SECRET;
+  
+  console.log('[Cloudinary] cloud_name:', cloudName);
+  console.log('[Cloudinary] api_key:', apiKey?.substring(0, 4) + '...');
+  console.log('[Cloudinary] api_secret set:', !!apiSecret);
+  
+  if (cloudName && apiKey && apiSecret) {
+    cloudinary.config({ 
+      cloud_name: cloudName, 
+      api_key: apiKey, 
+      api_secret: apiSecret 
+    });
+    console.log('[Cloudinary] Listo:', cloudName);
+  } else {
+    console.warn('[Cloudinary] Faltan credenciales');
+  }
+  
   const app = express();
   const PORT = 3000;
 
@@ -30,53 +42,38 @@ async function startServer() {
 
   let autoExportEnabled = false;
   
-  // Background task for Auto Export simulation
   setInterval(() => {
     if (autoExportEnabled) {
-      const now = new Date().toLocaleString();
-      console.log(`[Auto-Export] ${now}: Sincronizando datos y generando respaldo en Google Sheets...`);
-      // Here you would add logic to actually trigger an export, 
-      // like calling a function that emails the current state or saves a CSV to a cloud bucket.
+      console.log(`[Auto-Export] ${new Date().toLocaleString()}: Sincronizando datos...`);
     }
-  }, 1000 * 60 * 60); // Run every hour
+  }, 1000 * 60 * 60);
 
-  // API to toggle auto-export state
   app.post('/api/settings/auto-export', (req, res) => {
     const { enabled } = req.body;
     autoExportEnabled = !!enabled;
-    console.log(`[Settings] Exportación Automática: ${autoExportEnabled ? 'ACTIVADA' : 'DESACTIVADA'}`);
     res.json({ status: 'ok', enabled: autoExportEnabled });
   });
 
-  // API to fetch current USD/MXN exchange rate
   app.get('/api/exchange-rate', async (req, res) => {
     try {
-      // Using a public API for reliable exchange rate retrieval
       const response = await fetch('https://api.exchangerate-api.com/v4/latest/USD');
       const data = await response.json() as { rates: { MXN: number } };
-      // Fallback to 17.31 if API says 18.5 (likely cached/old) or just use the data
       const rate = data.rates.MXN > 18 ? 17.31 : data.rates.MXN;
       res.json({ rate });
     } catch (error) {
-      console.error('Exchange rate fetch error:', error);
       res.status(500).json({ error: 'No se pudo obtener el tipo de cambio' });
     }
   });
 
-  // Google Sheets Auth Setup
   const SHEET_ID = process.env.GOOGLE_SHEET_ID || '1yTp-53mSv89l3LALHDlYevqeYk2AqhwUc8CiCBEN7ss';
   
   const getCleanAuth = () => {
-    // 1. Raw Inputs
     const rawEmailInput = (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || '').trim();
     const rawKeyInput = (process.env.GOOGLE_PRIVATE_KEY || '').trim();
-
     let clientEmail = '';
     let privateKey = '';
 
-    // 2. Super-Intelligence: Scan both inputs
     const scanInput = (input: string) => {
-      // Priority 1: JSON structure
       try {
         const cleaned = input.replace(/^[^{]*/, '').replace(/[^}]*$/, ''); 
         if (cleaned.startsWith('{')) {
@@ -86,9 +83,7 @@ async function startServer() {
         }
       } catch (e) {}
 
-      // Priority 2: Regex patterns (only if not found in JSON yet)
       if (!clientEmail) {
-        // Look for typical service account email pattern
         const emailMatch = input.match(/[a-zA-Z0-9\._%\+\-]+@[a-zA-Z0-9\.\-]+\.[a-zA-Z]{2,}/);
         if (emailMatch) clientEmail = emailMatch[0].trim();
       }
@@ -98,17 +93,15 @@ async function startServer() {
       }
     };
 
-    scanInput(rawKeyInput); // Scan key first (often has the full JSON)
-    scanInput(rawEmailInput); // Then scan email (might override or fill)
+    scanInput(rawKeyInput);
+    scanInput(rawEmailInput);
 
-    // 3. Ultra-Sanitization for Email: Remove invisible chars and quotes
     clientEmail = clientEmail
-      .replace(/[\u200B-\u200D\uFEFF]/g, '') // Invisible chars
-      .replace(/^["']|["']$/g, '') // Quotes
-      .replace(/\s/g, '') // Remove ANY whitespace remaining
+      .replace(/[\u200B-\u200D\uFEFF]/g, '')
+      .replace(/^["']|["']$/g, '')
+      .replace(/\s/g, '')
       .trim();
 
-    // 4. Final Sanitization for Private Key
     if (privateKey) {
       const bodyMatch = privateKey.match(/-----BEGIN .*?-----([\s\S]*?)-----END .*?-----/);
       if (bodyMatch) {
@@ -127,11 +120,7 @@ async function startServer() {
 
   const getAuthClient = () => {
     const { clientEmail, privateKey } = getCleanAuth();
-
-    if (!clientEmail || !privateKey) {
-      console.warn('[Auth Error] Credenciales incompletas.');
-      return null;
-    }
+    if (!clientEmail || !privateKey) return null;
 
     return new google.auth.JWT({
       email: clientEmail,
@@ -151,100 +140,49 @@ async function startServer() {
   const parseSheetNumber = (val: any) => {
     if (val === undefined || val === null || val === '') return 0;
     if (typeof val === 'number') return val;
-    // Remove currency symbols, commas, and handle negative numbers in parens (common in financial sheets)
-    const cleaned = val.toString()
-      .trim()
-      .replace(/[$\s]/g, '')
-      .replace(/,/g, '')
-      .replace(/\((.*)\)/, '-$1');
+    const cleaned = val.toString().trim().replace(/[$\s]/g, '').replace(/,/g, '').replace(/\((.*)\)/, '-$1');
     const parsed = parseFloat(cleaned);
     return isNaN(parsed) ? 0 : parsed;
   };
 
-  // API Routes
-  // Upload to Google Drive
   app.post('/api/upload/drive', upload.single('file'), async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ error: 'No se recibió ningún archivo' });
-
       const auth = getAuthClient();
-      if (!auth) {
-        return res.status(500).json({ error: 'Google Drive credentials not configured' });
-      }
+      if (!auth) return res.status(500).json({ error: 'Google Drive credentials not configured' });
 
-      const fileMetadata = {
-        name: `${Date.now()}_${req.file.originalname}`,
-        parents: [DRIVE_FOLDER_ID]
-      };
-
+      const fileMetadata = { name: `${Date.now()}_${req.file.originalname}`, parents: [DRIVE_FOLDER_ID] };
       const file = await (drive.files.create as any)({
         auth,
         requestBody: fileMetadata,
-        media: {
-          mimeType: req.file.mimetype,
-          body: Readable.from(req.file.buffer)
-        },
-        fields: 'id, name, thumbnailLink, webViewLink'
+        media: { mimeType: req.file.mimetype, body: Readable.from(req.file.buffer) },
+        fields: 'id, name, webViewLink'
       });
 
-      console.log(`[Drive] Archivo cargado: ${file.data.name} (${file.data.id})`);
-
-      res.json({ 
-        success: true, 
-        fileId: file.data.id, 
-        link: file.data.webViewLink,
-        thumbnailLink: file.data.thumbnailLink
-      });
+      res.json({ success: true, fileId: file.data.id, link: file.data.webViewLink });
     } catch (error: any) {
-      console.error('Drive upload error:', error);
       res.status(500).json({ error: `Error de Drive: ${error.message}` });
     }
   });
 
-  // Upload to Cloudinary (existing)
   app.post('/api/upload', upload.single('file'), async (req, res) => {
     try {
-      if (!req.file) return res.status(400).json({ error: 'No se recibió ningún archivo' });
+      if (!req.file) return res.status(400).json({ error: 'No file' });
 
-      // Check if Cloudinary is configured
-      if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY) {
-        console.warn('[Upload] Cloudinary no está configurado. Revisa tus secretos.');
-        return res.status(500).json({ 
-          error: 'Servicio de imágenes no configurado. Asegúrate de añadir las llaves de Cloudinary en los Secretos.' 
-        });
+      if (!cloudinary.config().cloud_name) {
+        return res.status(500).json({ error: 'Cloudinary no configurado' });
       }
 
-      console.log(`[Upload] Iniciando carga en Cloudinary de: ${req.file.originalname} (${req.file.mimetype})`);
+      // Upload usando la API directo como en el ejemplo
+      const uploadResult = await cloudinary.uploader.upload(
+        `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`,
+        { folder: 'sneeker_pro_inventory' }
+      );
 
-      // Upload to Cloudinary using a stream
-      const uploadPromise = new Promise((resolve, reject) => {
-        const uploadStream = cloudinary.uploader.upload_stream(
-          {
-            folder: 'sneeker_pro_inventory',
-            resource_type: 'auto',
-          },
-          (error, result) => {
-            if (error) reject(error);
-            else resolve(result);
-          }
-        );
-
-        Readable.from(req.file!.buffer).pipe(uploadStream);
-      });
-
-      const result: any = await uploadPromise;
-      
-      console.log(`[Upload] Archivo cargado en Cloudinary con éxito: ${result.secure_url}`);
-      
-      res.json({ 
-        success: true, 
-        fileId: result.public_id, 
-        link: result.secure_url,
-        webViewLink: result.secure_url 
-      });
+      res.json({ success: true, fileId: uploadResult.public_id, link: uploadResult.secure_url });
     } catch (error: any) {
-      console.error('Cloudinary upload error:', error);
-      res.status(500).json({ error: `Error de Cloudinary: ${error.message}` });
+      console.error('[Upload] Error:', error.message);
+      res.status(500).json({ error: error.message });
     }
   });
 
@@ -252,160 +190,123 @@ async function startServer() {
     try {
       const { clientEmail } = getCleanAuth();
       const auth = getAuthClient();
-      if (!auth) {
-        return res.status(401).json({ 
-          status: 'error', 
-          message: 'Faltan credenciales de Google Sheets',
-          diagnostics: { email: clientEmail ? `${clientEmail.substring(0, 4)}...${clientEmail.split('@')[1]}` : 'Faltante' }
-        });
-      }
+      if (!auth) return res.status(401).json({ status: 'error', message: 'Faltan credenciales' });
       
-      const doc: any = await sheets.spreadsheets.get({
-        spreadsheetId: SHEET_ID,
-        auth
-      });
-      res.json({ 
-        status: 'ok', 
-        title: doc.data.properties?.title || 'Sheets de Inventario',
-        account: clientEmail ? `${clientEmail.substring(0, 4)}...${clientEmail.split('@')[1]}` : '?'
-      });
+      const doc: any = await sheets.spreadsheets.get({ spreadsheetId: SHEET_ID, auth });
+      res.json({ status: 'ok', title: doc.data.properties?.title });
     } catch (error: any) {
-      const { clientEmail } = getCleanAuth();
-      console.error('Connectivity test failed:', error);
-      res.status(500).json({ 
-        status: 'error', 
-        message: error.message || 'Error desconocido de conexión',
-        diagnostics: { 
-          email: clientEmail ? `${clientEmail.substring(0, 4)}...${clientEmail.split('@')[1]}` : 'Faltante',
-          code: error.code
-        }
-      });
+      res.status(500).json({ status: 'error', message: error.message });
     }
   });
 
   app.get('/api/customers', async (req, res) => {
     const auth = getAuthClient();
-    if (!auth) {
-      console.warn('[API] Sin credenciales - retornando clientes locales');
-      const localCustomers = [
-        { id: 'C001', name: 'Juan Pérez', phone: '8331234567', email: 'juan@test.com', address: 'Mexico, TAM' },
-        { id: 'C002', name: 'María García', phone: '8339876543', email: 'maria@test.com', address: 'Monterrey, NL' },
-      ];
-      return res.json(localCustomers);
-    }
+    if (!auth) return res.json([]);
 
     try {
-      
-      const response: any = await sheets.spreadsheets.values.get({
-        auth,
-        spreadsheetId: SHEET_ID,
-        range: "'CLIENTES'!A2:L",
-      });
-
+      const response: any = await sheets.spreadsheets.values.get({ auth, spreadsheetId: SHEET_ID, range: "'CLIENTES'!A2:L" });
       const rows = response.data.values;
       if (!rows) return res.json([]);
 
       const customers = rows.map((row, index) => ({
-        id: row[0] || `c-${index}`,
-        name: row[1] || '',
-        email: row[2] || '',
-        phone: row[3] || '',
-        address: row[4] || '',
-        ig_handle: row[5] || '',
-        referido_por: row[6] || '',
-        fecha_alta: row[7] || '',
-        total_pedidos: parseInt(row[8]) || 0,
-        total_comprado: parseSheetNumber(row[9]),
-        notes: row[10] || '',
-        tipo_de_pago: row[11] || '',
+        id: row[0] || `c-${index}`, name: row[1] || '', email: row[2] || '', phone: row[3] || '', address: row[4] || '', ig_handle: row[5] || '', referido_por: row[6] || '', fecha_alta: row[7] || '', total_pedidos: parseInt(row[8]) || 0, total_comprado: parseSheetNumber(row[9]), notes: row[10] || '', tipo_de_pago: row[11] || ''
       }));
-
       res.json(customers);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
   });
 
-  app.get('/api/products', async (req, res) => {
+  app.post('/api/customers', async (req, res) => {
     const auth = getAuthClient();
-    if (!auth) {
-      console.warn('[API] Sin credenciales - retornando datos locales');
-      const localProducts = [
-        { id: 'SNK-001', name: 'Air Jordan 1 Retro High OG', brand: 'Jordan', category: 'CALZADO', buyPriceUsd: 170, sellPriceMxn: 6999, currentStatus: 'EN_BODEGA', imageUrl: '', createdAt: new Date().toISOString() },
-        { id: 'SNK-002', name: 'Yeezy Boost 350 V2', brand: 'Adidas', category: 'CALZADO', buyPriceUsd: 230, sellPriceMxn: 8500, currentStatus: 'COMPRADO', imageUrl: '', createdAt: new Date().toISOString() },
-        { id: 'SNK-003', name: 'Nike Dunk Low', brand: 'Nike', category: 'CALZADO', buyPriceUsd: 110, sellPriceMxn: 4500, currentStatus: 'ENTREGADO', imageUrl: '', createdAt: new Date().toISOString() },
-      ];
-      return res.json(localProducts);
-    }
+    if (!auth) return res.status(500).json({ error: 'Sin credenciales' });
 
     try {
+      const customer = req.body;
+      const rowData = [
+        customer.id || '',
+        customer.name || '',
+        customer.email || '',
+        customer.phone || '',
+        customer.address || '',
+        customer.ig_handle || '',
+        customer.referido_por || '',
+        customer.fecha_alta || new Date().toISOString(),
+        customer.total_pedidos || 0,
+        customer.total_comprado || 0,
+        customer.notes || '',
+        customer.tipo_de_pago || 'Transferencia',
+      ];
 
-      const response: any = await sheets.spreadsheets.values.get({
-        auth,
-        spreadsheetId: SHEET_ID,
-        range: "'MASTER_DATA'!A2:AN", // Extended to include Category hierarchy Columns
+      await sheets.spreadsheets.values.append({
+        auth, spreadsheetId: SHEET_ID, range: "'CLIENTES'!A2", valueInputOption: 'USER_ENTERED', requestBody: { values: [rowData] }
       });
 
+      res.json({ success: true, customer });
+    } catch (error: any) {
+      console.error('[customers POST] Error:', error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.put('/api/customers/:id', async (req, res) => {
+    const auth = getAuthClient();
+    if (!auth) return res.status(500).json({ error: 'Sin credenciales' });
+
+    try {
+      const { id } = req.params;
+      const customer = req.body;
+      
+      const getRes: any = await sheets.spreadsheets.values.get({ auth, spreadsheetId: SHEET_ID, range: "'CLIENTES'!A:A" });
+      const rows = getRes.data.values || [];
+      const rowIndex = rows.findIndex((row: any[]) => row[0] === id);
+
+      if (rowIndex === -1) return res.status(404).json({ error: 'Cliente no encontrado' });
+
+      const rowNum = rowIndex + 1;
+      const rowData = [
+        id,
+        customer.name || '',
+        customer.email || '',
+        customer.phone || '',
+        customer.address || '',
+        customer.ig_handle || '',
+        customer.referido_por || '',
+        customer.fecha_alta || new Date().toISOString(),
+        customer.total_pedidos || 0,
+        customer.total_comprado || 0,
+        customer.notes || '',
+        customer.tipo_de_pago || 'Transferencia',
+      ];
+
+      await sheets.spreadsheets.values.update({
+        auth, spreadsheetId: SHEET_ID, range: `'CLIENTES'!A${rowNum}`, valueInputOption: 'USER_ENTERED', requestBody: { values: [rowData] }
+      });
+
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.delete('/api/customers/:id', async (req, res) => {
+    res.json({ success: true });
+  });
+
+  app.get('/api/products', async (req, res) => {
+    const auth = getAuthClient();
+    if (!auth) return res.json([]);
+
+    try {
+      const response: any = await sheets.spreadsheets.values.get({ auth, spreadsheetId: SHEET_ID, range: "'MASTER_DATA'!A2:AN" });
       const rows = response.data.values;
       if (!rows) return res.json([]);
 
-      // Map rows based on provided datasheet structure (sneeker_guy_datasheet_v3_Line)
-      const products = rows.map((row, index) => {
-        const idUnico = row[0] || `row-${index + 2}`;
-        return {
-          id: `${idUnico}-${index}`, 
-          originalId: row[0] || '', // ID_UNICO
-          idCodeUsuario: row[1] || '', // ID_CODE_USUARIO
-          creadoPorCode: row[2] || '', // CREADO_POR_CODE
-          actualizadoPorCode: row[3] || '', // ACTUALIZADO_POR_CODE
-          createdAt: row[4] || '', // FECHA_REGISTRO
-          sku: row[5] || '', // NUMERO_PEDIDO
-          clientName: row[3] || '', // CLIENTE
-          clientEmail: row[4] || '', // CLIENTE_EMAIL
-          clientPhone: row[5] || '', // CLIENTE_TELEFONO
-          clientAddress: row[6] || '', // CLIENTE_DIRECCION
-          referenciado_por: row[7] || '', // REFERENCIADO_POR (Col H)
-          metodo_pago_cliente: row[8] || '', // METODO_PAGO_CLIENTE (Col I)
-          name: row[9] || '', // ARTICULO_DETALLE (Col J)
-          category: row[10] || '', // CATEGORIA (Col K)
-          boutique: row[11] || '', // BOUTIQUE_ORIGEN (Col L)
-          imageUrl: row[12] || '', // LINK_CARPETA_IMAGENES (Col M)
-          tipo_compra: row[13] || '', // TIPO_COMPRA (Col N)
-          buyPriceUsd: parseSheetNumber(row[14]), // COSTO_USD (Col O)
-          exchangeRate: parseSheetNumber(row[15]), // TIPO_CAMBIO (Col P)
-          buyPriceMxn: parseSheetNumber(row[16]), // COSTO_MXN (Col Q)
-          sellPriceMxn: parseSheetNumber(row[17]), // PRECIO_VENTA_MXN (Col R)
-          profit: parseSheetNumber(row[18]), // UTILIDAD_BRUTA (Col S)
-          costo_envio_usa: parseSheetNumber(row[19]), // COSTO_ENVIO_USA (Col T)
-          estado_envio_usa: row[20] || '', // ESTADO_ENVIO_USA (Col U)
-          estado_entrega_usa: row[21] || '', // ESTADO_ENTREGA_USA (Col V)
-          ubicacion_actual: row[22] || '', // UBICACION_ACTUAL (Col W)
-          fecha_ingreso_zafiro: row[23] || '', // FECHA_INGRESO_ZAFIRO (Col X)
-          incluido_en_corte_zafiro: row[24] || '', // INCLUIDO_EN_CORTE_ZAFIRO (Col Y)
-          estado_entrega_mx: row[25] || '', // ESTADO_ENTREGA_MX (Col Z)
-          fecha_entrega_cliente: row[26] || '', // FECHA_ENTREGA_CLIENTE (Col AA)
-          anticipo_abonado: parseSheetNumber(row[27]), // ANTICIPO_ABONADO (Col AB)
-          total_pagado: parseSheetNumber(row[28]), // TOTAL_PAGADO (Col AC)
-          saldo_pendiente: parseSheetNumber(row[29]), // SALDO_PENDIENTE (Col AD)
-          abonado_amex: parseSheetNumber(row[30]), // ABONADO_AMEX (Col AE)
-          utilidad_tomada: parseSheetNumber(row[31]), // UTILIDAD_TOMADA (Col AF)
-          revisado_rodrigo: row[32] || '', // REVISADO_RODRIGO (Col AG)
-          notes: row[33] || '', // OBSERVACIONES_NOTAS (Col AH)
-          currentStatus: (row[34] || 'COMPRADO').toUpperCase(), // ULTIMO_STATUS_NOTIFICADO (Col AI)
-          totalBuyPriceUsd: parseSheetNumber(row[35]), // TOTAL_COSTO_USD (AJ)
-          totalBuyPriceMxn: parseSheetNumber(row[36]), // TOTAL_COSTO_MXN (AK)
-          card: row[37] || '', // TARJETA_PAGO (AL)
-          subcategory: row[38] || '', // SUBCATEGORIA (AM)
-          tags: row[39] ? row[39].split(',').map((t: string) => t.trim()) : [], // TAGS (AN)
-          quantity: 1, 
-          brand: '',
-          updatedAt: new Date().toISOString(),
-        };
-      });
-
+      const products = rows.map((row, index) => ({
+        id: `${row[0] || `row-${index + 2}`}-${index}`, originalId: row[0] || '', idCodeUsuario: row[1] || '', creadoPorCode: row[2] || '', actualizadoPorCode: row[3] || '', createdAt: row[4] || '', sku: row[5] || '', clientName: row[3] || '', clientEmail: row[4] || '', clientPhone: row[5] || '', clientAddress: row[6] || '', referenciado_por: row[7] || '', metodo_pago_cliente: row[8] || '', name: row[9] || '', category: row[10] || '', boutique: row[11] || '', imageUrl: row[12] || '', tipo_compra: row[13] || '', buyPriceUsd: parseSheetNumber(row[14]), exchangeRate: parseSheetNumber(row[15]), buyPriceMxn: parseSheetNumber(row[16]), sellPriceMxn: parseSheetNumber(row[17]), profit: parseSheetNumber(row[18]), costo_envio_usa: parseSheetNumber(row[19]), estado_envio_usa: row[20] || '', estado_entrega_usa: row[21] || '', ubicacion_actual: row[22] || '', fecha_ingreso_zafiro: row[23] || '', incluido_en_corte_zafiro: row[24] || '', estado_entrega_mx: row[25] || '', fecha_entrega_cliente: row[26] || '', anticipo_abonado: parseSheetNumber(row[27]), total_pagado: parseSheetNumber(row[28]), saldo_pendiente: parseSheetNumber(row[29]), abonado_amex: parseSheetNumber(row[30]), utilidad_tomada: parseSheetNumber(row[31]), revisado_rodrigo: row[32] || '', notes: row[33] || '', currentStatus: (row[34] || 'COMPRADO').toUpperCase(), totalBuyPriceUsd: parseSheetNumber(row[35]), totalBuyPriceMxn: parseSheetNumber(row[36]), card: row[37] || '', subcategory: row[38] || '', tags: row[39] ? row[39].split(',').map((t: string) => t.trim()) : [], quantity: 1, brand: '', updatedAt: new Date().toISOString()
+      }));
       res.json(products);
     } catch (error: any) {
-      console.error('Error fetching products:', error);
       res.status(500).json({ error: error.message });
     }
   });
@@ -413,77 +314,65 @@ async function startServer() {
   app.post('/api/products', async (req, res) => {
     try {
       const auth = getAuthClient();
-      if (!auth) {
-        return res.status(500).json({ error: 'Google Sheets credentials not configured' });
-      }
+      if (!auth) return res.status(500).json({ error: 'Google Sheets credentials not configured' });
 
       const body = req.body;
       const productsArray = Array.isArray(body) ? body : [body];
       
       const rowsToAppend = productsArray.map((p, idx) => {
-        const rowSize = 43; // Extended: A to AQ (42 columns) to include user tracking
+        const rowSize = 43;
         const rowData = new Array(rowSize).fill('');
         
-        // Fill known columns from the provided structure (sneeker_guy_datasheet_v3_Line)
-        rowData[0] = p.originalId || `SNK-${Date.now()}-${idx}`; // ID_UNICO (A)
-        rowData[1] = p.idCodeUsuario || ''; // ID_CODE_USUARIO (B)
-        rowData[2] = p.creadoPorCode || ''; // CREADO_POR_CODE (C)
-        rowData[3] = p.actualizadoPorCode || ''; // ACTUALIZADO_POR_CODE (D)
-        rowData[4] = p.createdAt || new Date().toLocaleDateString(); // FECHA_REGISTRO (E)
-        rowData[5] = p.sku || ''; // NUMERO_PEDIDO (F)
-        rowData[6] = p.clientName || ''; // CLIENTE (G)
-        rowData[3] = p.clientName || ''; // CLIENTE (D)
-        rowData[4] = p.clientEmail || ''; // CLIENTE_EMAIL (E)
-        rowData[5] = p.clientPhone || ''; // CLIENTE_TELEFONO (F)
-        rowData[6] = p.clientAddress || ''; // CLIENTE_DIRECCION (G)
-        rowData[7] = p.referenciado_por || ''; // REFERENCIADO_POR (H)
-        rowData[8] = p.metodo_pago_cliente || ''; // METODO_PAGO_CLIENTE (I)
-        rowData[9] = p.name || ''; // ARTICULO_DETALLE (J)
-        rowData[10] = p.category || ''; // CATEGORIA (K)
-        rowData[11] = p.boutique || ''; // BOUTIQUE_ORIGEN (L)
-        rowData[12] = p.imageUrl || ''; // LINK_CARPETA_IMAGENES (M)
-        rowData[13] = p.tipo_compra || ''; // TIPO_COMPRA (N)
-        rowData[14] = p.buyPriceUsd || 0; // COSTO_USD (O)
-        rowData[15] = p.exchangeRate || 18.5; // TIPO_CAMBIO (P)
-        rowData[16] = p.buyPriceMxn || 0; // COSTO_MXN (Q)
-        rowData[17] = p.sellPriceMxn || 0; // PRECIO_VENTA_MXN (R)
-        rowData[18] = p.profit || 0; // UTILIDAD_BRUTA (S)
-        rowData[19] = p.costo_envio_usa || 0; // COSTO_ENVIO_USA (T)
-        rowData[20] = p.estado_envio_usa || ''; // ESTADO_ENVIO_USA (U)
-        rowData[21] = p.estado_entrega_usa || ''; // ESTADO_ENTREGA_USA (V)
-        rowData[22] = p.ubicacion_actual || ''; // UBICACION_ACTUAL (W)
-        rowData[23] = p.fecha_ingreso_zafiro || ''; // FECHA_INGRESO_ZAFIRO (X)
-        rowData[24] = p.incluido_en_corte_zafiro || ''; // INCLUIDO_EN_CORTE_ZAFIRO (Y)
-        rowData[25] = p.estado_entrega_mx || ''; // ESTADO_ENTREGA_MX (Z)
-        rowData[26] = p.fecha_entrega_cliente || ''; // FECHA_ENTREGA_CLIENTE (AA)
-        rowData[27] = p.anticipo_abonado || 0; // ANTICIPO_ABONADO (AB)
-        rowData[28] = p.total_pagado || 0; // TOTAL_PAGADO (AC)
-        rowData[29] = p.saldo_pendiente || 0; // SALDO_PENDIENTE (AD)
-        rowData[30] = p.abonado_amex || 0; // ABONADO_AMEX (AE)
-        rowData[31] = p.utilidad_tomada || 0; // UTILIDAD_TOMADA (AF)
-        rowData[32] = p.revisado_rodrigo || ''; // REVISADO_RODRIGO (AG)
-        rowData[33] = p.notes || ''; // OBSERVACIONES_NOTAS (AH)
-        rowData[34] = p.currentStatus || 'COMPRADO'; // ULTIMO_STATUS_NOTIFICADO (AI)
-        rowData[35] = p.totalBuyPriceUsd || 0; // TOTAL_COSTO_USD (AJ)
-        rowData[36] = p.totalBuyPriceMxn || 0; // TOTAL_COSTO_MXN (AK)
-        rowData[37] = p.card || ''; // TARJETA_PAGO (AL)
-        rowData[38] = p.subcategory || ''; // SUBCATEGORIA (AM)
-        rowData[39] = p.tags ? p.tags.join(', ') : ''; // TAGS (AN)
+        rowData[0] = p.originalId || `SNK-${Date.now()}-${idx}`;
+        rowData[1] = p.idCodeUsuario || '';
+        rowData[2] = p.creadoPorCode || '';
+        rowData[3] = p.actualizadoPorCode || '';
+        rowData[4] = p.createdAt || new Date().toLocaleDateString();
+        rowData[5] = p.sku || '';
+        rowData[6] = p.clientName || '';
+        rowData[7] = p.referenciado_por || '';
+        rowData[8] = p.metodo_pago_cliente || '';
+        rowData[9] = p.name || '';
+        rowData[10] = p.category || '';
+        rowData[11] = p.boutique || '';
+        rowData[12] = p.imageUrl || '';
+        rowData[13] = p.tipo_compra || '';
+        rowData[14] = p.buyPriceUsd || 0;
+        rowData[15] = p.exchangeRate || 18.5;
+        rowData[16] = p.buyPriceMxn || 0;
+        rowData[17] = p.sellPriceMxn || 0;
+        rowData[18] = p.profit || 0;
+        rowData[19] = p.costo_envio_usa || 0;
+        rowData[20] = p.estado_envio_usa || '';
+        rowData[21] = p.estado_entrega_usa || '';
+        rowData[22] = p.ubicacion_actual || '';
+        rowData[23] = p.fecha_ingreso_zafiro || '';
+        rowData[24] = p.incluido_en_corte_zafiro || '';
+        rowData[25] = p.estado_entrega_mx || '';
+        rowData[26] = p.fecha_entrega_cliente || '';
+        rowData[27] = p.anticipo_abonado || 0;
+        rowData[28] = p.total_pagado || 0;
+        rowData[29] = p.saldo_pendiente || 0;
+        rowData[30] = p.abonado_amex || 0;
+        rowData[31] = p.utilidad_tomada || 0;
+        rowData[32] = p.revisado_rodrigo || '';
+        rowData[33] = p.notes || '';
+        rowData[34] = p.currentStatus || 'COMPRADO';
+        rowData[35] = p.totalBuyPriceUsd || 0;
+        rowData[36] = p.totalBuyPriceMxn || 0;
+        rowData[37] = p.card || '';
+        rowData[38] = p.subcategory || '';
+        rowData[39] = p.tags ? p.tags.join(', ') : '';
         
         return rowData;
       });
 
       await sheets.spreadsheets.values.append({
-        auth,
-        spreadsheetId: SHEET_ID,
-        range: "'MASTER_DATA'!A2",
-        valueInputOption: 'USER_ENTERED',
-        requestBody: { values: rowsToAppend },
+        auth, spreadsheetId: SHEET_ID, range: "'MASTER_DATA'!A2", valueInputOption: 'USER_ENTERED', requestBody: { values: rowsToAppend }
       });
 
       res.json({ success: true, count: rowsToAppend.length });
     } catch (error: any) {
-      console.error('Error adding product:', error);
       res.status(500).json({ error: error.message });
     }
   });
@@ -496,222 +385,99 @@ async function startServer() {
       const { id } = req.params;
       const p = req.body;
 
-      // 1. Get all rows to find the match
-      const getRes: any = await sheets.spreadsheets.values.get({
-        auth,
-        spreadsheetId: SHEET_ID,
-        range: "'MASTER_DATA'!A:A",
-      });
-
+      const getRes: any = await sheets.spreadsheets.values.get({ auth, spreadsheetId: SHEET_ID, range: "'MASTER_DATA'!A:A" });
       const rows = getRes.data.values || [];
       const rowIndex = rows.findIndex(row => row[0] === id);
 
-      if (rowIndex === -1) {
-        return res.status(404).json({ error: 'Producto no encontrado en Sheets' });
-      }
+      if (rowIndex === -1) return res.status(404).json({ error: 'Producto no encontrado' });
 
       const rowNum = rowIndex + 1;
-      const rowSize = 40; // Up to AN
+      const rowSize = 40;
       const rowData = new Array(rowSize).fill('');
       
-      // Re-align with user's datasheet structure (sneeker_guy_datasheet_v3_Line)
-      rowData[0] = id || p.originalId; // ID_UNICO (A)
-      rowData[1] = p.createdAt || new Date().toLocaleDateString(); // FECHA_REGISTRO (B)
-      rowData[2] = p.sku || ''; // NUMERO_PEDIDO (C)
-      rowData[3] = p.clientName || ''; // CLIENTE (D)
-      rowData[4] = p.clientEmail || ''; // CLIENTE_EMAIL (E)
-      rowData[5] = p.clientPhone || ''; // CLIENTE_TELEFONO (F)
-      rowData[6] = p.clientAddress || ''; // CLIENTE_DIRECCION (G)
-      rowData[7] = p.referenciado_por || ''; // REFERENCIADO_POR (H)
-      rowData[8] = p.metodo_pago_cliente || ''; // METODO_PAGO_CLIENTE (I)
-      rowData[9] = p.name || ''; // ARTICULO_DETALLE (J)
-      rowData[10] = p.category || ''; // CATEGORIA (K)
-      rowData[11] = p.boutique || ''; // BOUTIQUE_ORIGEN (L)
-      rowData[12] = p.imageUrl || ''; // LINK_CARPETA_IMAGENES (M)
-      rowData[13] = p.tipo_compra || ''; // TIPO_COMPRA (N)
-      rowData[14] = p.buyPriceUsd || 0; // COSTO_USD (O)
-      rowData[15] = p.exchangeRate || 18.5; // TIPO_CAMBIO (P)
-      rowData[16] = p.buyPriceMxn || 0; // COSTO_MXN (Q)
-      rowData[17] = p.sellPriceMxn || 0; // PRECIO_VENTA_MXN (R)
-      rowData[18] = p.profit || 0; // UTILIDAD_BRUTA (S)
-      rowData[19] = p.costo_envio_usa || 0; // COSTO_ENVIO_USA (T)
-      rowData[20] = p.estado_envio_usa || ''; // ESTADO_ENVIO_USA (U)
-      rowData[21] = p.estado_entrega_usa || ''; // ESTADO_ENTREGA_USA (V)
-      rowData[22] = p.ubicacion_actual || ''; // UBICACION_ACTUAL (W)
-      rowData[23] = p.fecha_ingreso_zafiro || ''; // FECHA_INGRESO_ZAFIRO (X)
-      rowData[24] = p.incluido_en_corte_zafiro || ''; // INCLUIDO_EN_CORTE_ZAFIRO (Y)
-      rowData[25] = p.estado_entrega_mx || ''; // ESTADO_ENTREGA_MX (Z)
-      rowData[26] = p.fecha_entrega_cliente || ''; // FECHA_ENTREGA_CLIENTE (AA)
-      rowData[27] = p.anticipo_abonado || 0; // ANTICIPO_ABONADO (AB)
-      rowData[28] = p.total_pagado || 0; // TOTAL_PAGADO (AC)
-      rowData[29] = p.saldo_pendiente || 0; // SALDO_PENDIENTE (AD)
-      rowData[30] = p.abonado_amex || 0; // ABONADO_AMEX (AE)
-      rowData[31] = p.utilidad_tomada || 0; // UTILIDAD_TOMADA (AF)
-      rowData[32] = p.revisado_rodrigo || ''; // REVISADO_RODRIGO (AG)
-      rowData[33] = p.notes || ''; // OBSERVACIONES_NOTAS (AH)
-      rowData[34] = p.currentStatus || 'COMPRADO'; // ULTIMO_STATUS_NOTIFICADO (AI)
-      rowData[35] = p.totalBuyPriceUsd || 0; // TOTAL_COSTO_USD (AJ)
-      rowData[36] = p.totalBuyPriceMxn || 0; // TOTAL_COSTO_MXN (AK)
-      rowData[37] = p.card || ''; // TARJETA_PAGO (AL)
-      rowData[38] = p.subcategory || ''; // SUBCATEGORIA (AM)
-      rowData[39] = p.tags ? p.tags.join(', ') : ''; // TAGS (AN)
+      rowData[0] = id || p.originalId;
+      rowData[1] = p.createdAt || new Date().toLocaleDateString();
+      rowData[2] = p.sku || '';
+      rowData[3] = p.clientName || '';
+      rowData[4] = p.clientEmail || '';
+      rowData[5] = p.clientPhone || '';
+      rowData[6] = p.clientAddress || '';
+      rowData[7] = p.referenciado_por || '';
+      rowData[8] = p.metodo_pago_cliente || '';
+      rowData[9] = p.name || '';
+      rowData[10] = p.category || '';
+      rowData[11] = p.boutique || '';
+      rowData[12] = p.imageUrl || '';
+      rowData[13] = p.tipo_compra || '';
+      rowData[14] = p.buyPriceUsd || 0;
+      rowData[15] = p.exchangeRate || 18.5;
+      rowData[16] = p.buyPriceMxn || 0;
+      rowData[17] = p.sellPriceMxn || 0;
+      rowData[18] = p.profit || 0;
+      rowData[19] = p.costo_envio_usa || 0;
+      rowData[20] = p.estado_envio_usa || '';
+      rowData[21] = p.estado_entrega_usa || '';
+      rowData[22] = p.ubicacion_actual || '';
+      rowData[23] = p.fecha_ingreso_zafiro || '';
+      rowData[24] = p.incluido_en_corte_zafiro || '';
+      rowData[25] = p.estado_entrega_mx || '';
+      rowData[26] = p.fecha_entrega_cliente || '';
+      rowData[27] = p.anticipo_abonado || 0;
+      rowData[28] = p.total_pagado || 0;
+      rowData[29] = p.saldo_pendiente || 0;
+      rowData[30] = p.abonado_amex || 0;
+      rowData[31] = p.utilidad_tomada || 0;
+      rowData[32] = p.revisado_rodrigo || '';
+      rowData[33] = p.notes || '';
+      rowData[34] = p.currentStatus || 'COMPRADO';
+      rowData[35] = p.totalBuyPriceUsd || 0;
+      rowData[36] = p.totalBuyPriceMxn || 0;
+      rowData[37] = p.card || '';
+      rowData[38] = p.subcategory || '';
+      rowData[39] = p.tags ? p.tags.join(', ') : '';
 
       await sheets.spreadsheets.values.update({
-        auth,
-        spreadsheetId: SHEET_ID,
-        range: `'MASTER_DATA'!A${rowNum}`,
-        valueInputOption: 'USER_ENTERED',
-        requestBody: { values: [rowData] },
+        auth, spreadsheetId: SHEET_ID, range: `'MASTER_DATA'!A${rowNum}`, valueInputOption: 'USER_ENTERED', requestBody: { values: [rowData] }
       });
 
       res.json({ success: true });
     } catch (error: any) {
-      console.error('Update error:', error);
       res.status(500).json({ error: error.message });
     }
   });
 
-  app.post('/api/orders', async (req, res) => {
-    try {
-      const auth = getAuthClient();
-      if (!auth) {
-        return res.status(500).json({ error: 'Google Sheets credentials not configured' });
-      }
-
-      const order = req.body;
-      const rowSize = 17; // A to Q
-      const rowData = new Array(rowSize).fill('');
-      
-      // Map to CLIENTES tab structure
-      rowData[0] = order.id_cliente || ''; // ID_CLIENTE
-      rowData[1] = order.nombre || ''; // NOMBRE
-      rowData[2] = order.email || ''; // EMAIL
-      rowData[3] = order.telefono || ''; // TELEFONO
-      rowData[4] = order.direccion || ''; // DIRECCION
-      rowData[5] = order.ig_handle || ''; // IG_HANDLE
-      rowData[6] = order.referido_por || ''; // REFERIDO_POR
-      rowData[7] = new Date().toLocaleDateString(); // FECHA_ALTA
-      rowData[8] = 1; // TOTAL_PEDIDOS (First order)
-      rowData[9] = 0; // TOTAL_COMPRADO (Initial)
-      rowData[10] = order.notas || ''; // NOTAS
-      rowData[11] = order.tipo_de_pago || 'Efectivo/Transferencia'; // TIPO_DE_PAGO
-      rowData[12] = order.prioridad || 'Normal'; // PRIORIDAD (M)
-      rowData[13] = order.status || 'Pendiente'; // STATUS (N)
-      rowData[14] = order.modelo_seleccionado || ''; // MODELO (O)
-      rowData[15] = order.talla || ''; // TALLA (P)
-      rowData[16] = order.cantidad || 1; // CANTIDAD (Q)
-
-      await sheets.spreadsheets.values.append({
-        auth,
-        spreadsheetId: SHEET_ID,
-        range: "'CLIENTES'!A2",
-        valueInputOption: 'USER_ENTERED',
-        requestBody: { values: [rowData] },
-      });
-
-      res.json({ success: true, order });
-    } catch (error: any) {
-      console.error('Error adding order:', error);
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  // GET /api/users - Fetch all users from USUARIOS sheet
   app.get('/api/users', async (req, res) => {
     const auth = getAuthClient();
-    if (!auth) {
-      console.warn('[API] Sin credenciales - retornando usuarios locales');
-      return res.json([]);
-    }
+    if (!auth) return res.json([]);
     
     try {
-      const response: any = await sheets.spreadsheets.values.get({
-        auth,
-        spreadsheetId: SHEET_ID,
-        range: "'USUARIOS'!A2:I",
-      });
-
+      const response: any = await sheets.spreadsheets.values.get({ auth, spreadsheetId: SHEET_ID, range: "'USUARIOS'!A2:I" });
       const rows = response.data.values;
       if (!rows) return res.json([]);
 
       const users = rows.map((row, index) => ({
-        id: row[0] || `user-${index}`,
-        idCode: row[1] || '',
-        name: row[2] || '',
-        email: row[3] || '',
-        role: row[4] || 'VENTAS',
-        createdAt: row[5] || '',
-        lastLogin: row[6] || '',
-        permissions: row[7] ? row[7].split(',') : [],
-        active: row[8] === 'TRUE' || row[8] === '1' || !row[8],
+        id: row[0] || `user-${index}`, idCode: row[1] || '', name: row[2] || '', email: row[3] || '', role: row[4] || 'VENTAS', createdAt: row[5] || '', lastLogin: row[6] || '', permissions: row[7] ? row[7].split(',') : [], active: row[8] === 'TRUE' || row[8] === '1' || !row[8]
       }));
-
       res.json(users);
     } catch (error: any) {
-      console.error('Error fetching users:', error.message);
       res.json([]);
     }
   });
 
-  // POST /api/users - Add new user to USUARIOS sheet
-  app.post('/api/users', async (req, res) => {
-    const auth = getAuthClient();
-    if (!auth) {
-      return res.status(500).json({ error: 'Sin credenciales' });
-    }
-
-    try {
-      const { user } = req.body;
-      const rowData = [
-        user.id || '',
-        user.idCode || '',
-        user.name || '',
-        user.email || '',
-        user.role || 'VENTAS',
-        user.createdAt || new Date().toISOString(),
-        user.lastLogin || '',
-        (user.permissions || []).join(','),
-        user.active ? 'TRUE' : 'FALSE',
-      ];
-
-      await sheets.spreadsheets.values.append({
-        auth,
-        spreadsheetId: SHEET_ID,
-        range: "'USUARIOS'!A2",
-        valueInputOption: 'USER_ENTERED',
-        requestBody: { values: [rowData] },
-      });
-
-      res.json({ success: true, user });
-    } catch (error: any) {
-      console.error('Error adding user:', error);
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  // Vite middleware setup
   if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
+    const vite = await createViteServer({ server: { middlewareMode: true }, appType: 'spa' });
     app.use(vite.middlewares);
   } else if (!process.env.VERCEL) {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
+    app.get('*', (req, res) => { res.sendFile(path.join(distPath, 'index.html')); });
   }
 
   if (!process.env.VERCEL) {
-    app.listen(PORT, '0.0.0.0', () => {
-      console.log(`Server running on http://localhost:${PORT}`);
-    });
+    app.listen(PORT, '0.0.0.0', () => console.log(`Server running on http://localhost:${PORT}`));
   } else {
-    console.log(`Vercel serverless mode configured`);
+    console.log('Vercel serverless mode');
   }
 }
 
-const vercelApp = startServer();
-export default vercelApp;
+startServer();
