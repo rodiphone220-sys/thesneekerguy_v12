@@ -33,6 +33,7 @@ import { Product, Customer, OrderStatus } from '../types';
 import { cn } from '../lib/utils';
 
 import { LectorOCR, QuickEditField, OCRModal, OCRData } from './OCRReader';
+import Tesseract from 'tesseract.js';
 
 interface ProductFormProps {
   product?: Product | null;
@@ -49,7 +50,7 @@ interface ProductFormProps {
 const CATEGORIES = ['CALZADO', 'ACCESORIOS', 'STREETWEAR', 'COLECCIONABLES', 'OTROS'];
 const GENDERS = ['HOMBRE', 'MUJER', 'UNISEX', 'KIDS'];
 const STATUSES: OrderStatus[] = ['COMPRADO', 'EN_RUTA', 'EN_BODEGA', 'ENVIADO', 'ENTREGADO'];
-const CARD_TYPES = ['AMEX CORPORATE', 'VISA BUSINESS', 'MASTERCARD BLACK', 'CITI PREMIER', 'EFECTIVO', 'TRANSFERENCIA', 'OTRO'];
+const CARD_TYPES = ['AMEX AZUL', 'AMEX PLATEADA', 'SANTANDER', 'INVEX', 'EFECTIVO', 'TRANSFERENCIA', 'OTRO'];
 const COLORS = [
   'BLACK', 'WHITE', 'GREY', 'RED', 'BLUE', 'GREEN', 'YELLOW', 'ORANGE', 'PURPLE', 'PINK', 
   'BROWN', 'NAVY', 'OLIVE', 'BEIGE', 'CREAM', 'SILVER', 'GOLD', 'MULTI', 'NEON', 'GUM',
@@ -59,6 +60,18 @@ const COLORS = [
 
 const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY || '';
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
+
+async function uploadToCloudinary(file: File): Promise<string> {
+  const formData = new FormData();
+  formData.append('file', file);
+  
+  const res = await fetch('http://localhost:3000/api/upload', {
+    method: 'POST',
+    body: formData
+  });
+  const data = await res.json();
+  return data.link || '';
+}
 
 async function callGroq(prompt: string, imageBase64?: string) {
   const messages: any[] = [{ role: 'user', content: prompt }];
@@ -84,6 +97,13 @@ async function callGroq(prompt: string, imageBase64?: string) {
   });
   const data = await res.json();
   return data.choices?.[0]?.message?.content || '';
+}
+
+async function extractTextWithOCR(imageBase64: string): Promise<string> {
+  const { data: { text } } = await Tesseract.recognize(imageBase64, 'spa', {
+    logger: () => {}
+  });
+  return text;
 }
 
 export function ProductForm({ 
@@ -121,7 +141,7 @@ export function ProductForm({
     buyPriceMxn: 0,
     sellPriceMxn: 0,
     quantity: 1,
-    imageUrl: '',
+    imageUrls: [],
     currentStatus: 'COMPRADO',
     isShowcase: true,
     clientName: '',
@@ -253,29 +273,78 @@ export function ProductForm({
   };
 
 
-  // OCR scanning with Groq AI
+  // OCR scanning with Tesseract.js
   const scanImageWithAI = async (base64Image: string) => {
     setIsUploading(true);
     try {
-      const prompt = "Analiza esta imagen y extrae en JSON: modelo, marca, categoria (CALZADO, ACCESORIOS, STREETWEAR, COLECCIONABLES, OTROS), genero (HOMBRE, MUJER, UNISEX, KIDS), color, talla, precio_compra (solo el numero). Responde SOLO JSON.";
-      
-      const text = await callGroq(prompt, base64Image);
-      if (!text) return;
-      
-      const data = JSON.parse(text);
-      setPendingOCRData({
-        name: data.modelo || data.model || currentItem.name,
-        brand: data.marca || data.brand || currentItem.brand,
-        category: data.categoria || data.category || currentItem.category,
-        gender: data.genero || data.gender || currentItem.gender,
-        color_description: data.color || currentItem.color_description,
-        size: data.talla || data.size || currentItem.size,
-        buyPriceUsd: parseFloat(data.precio_compra || data.precio || data.price) || currentItem.buyPriceUsd
-      });
+      const ocrText = await extractTextWithOCR(base64Image);
+      if (!ocrText) return;
+
+      const lines = ocrText.split('\n').filter(l => l.trim());
+      const lowerText = ocrText.toLowerCase();
+
+      let extractedData: Partial<OCRData> = {
+        name: currentItem.name,
+        brand: currentItem.brand,
+        category: currentItem.category,
+        gender: currentItem.gender,
+        color_description: currentItem.color_description,
+        size: currentItem.size,
+        buyPriceUsd: currentItem.buyPriceUsd
+      };
+
+      const categories = ['CALZADO', 'ACCESORIOS', 'STREETWEAR', 'COLECCIONABLES', 'OTROS'];
+      for (const cat of categories) {
+        if (lowerText.includes(cat.toLowerCase())) {
+          extractedData.category = cat;
+          break;
+        }
+      }
+
+      const genders = ['HOMBRE', 'MUJER', 'UNISEX', 'KIDS'];
+      for (const gen of genders) {
+        if (lowerText.includes(gen.toLowerCase())) {
+          extractedData.gender = gen;
+          break;
+        }
+      }
+
+      const brands = ['nike', 'adidas', 'puma', 'jordan', 'new balance', 'converse', 'vans', 'asics', 'reebok', 'yeezy', 'salomon', 'north face', 'supreme', 'stussy', 'carhartt', 'palace', 'kith'];
+      for (const brand of brands) {
+        if (lowerText.includes(brand)) {
+          extractedData.brand = brand.toUpperCase();
+          break;
+        }
+      }
+
+      const colors = ['black', 'white', 'red', 'blue', 'green', 'grey', 'gray', 'pink', 'orange', 'purple', 'yellow', 'brown', 'navy', 'olive', 'beige', 'cream', 'gold', 'silver', 'multicolor', 'negro', 'blanco', 'rojo', 'azul', 'verde', 'gris', 'rosa', 'morado', 'amarillo', 'cafe', 'cafe', 'marron'];
+      for (const color of colors) {
+        if (lowerText.includes(color)) {
+          extractedData.color_description = color.toUpperCase();
+          break;
+        }
+      }
+
+      const priceMatch = ocrText.match(/\$?\d+[\.,]\d{2}|\d+\s*(?:usd|dls)?/i);
+      if (priceMatch) {
+        extractedData.buyPriceUsd = parseFloat(priceMatch[0].replace(/[^\d.,]/g, '').replace(',', '.'));
+      }
+
+      const sizeMatch = ocrText.match(/(\d{1,2}[A-Z]?(?:\s*x\s*\d{1,2}[A-Z]?)?|US\s*\d{1,2}|Size\s*\d+|Talla\s*\d+)/i);
+      if (sizeMatch) {
+        extractedData.size = sizeMatch[0].replace(/size|talla/i, '').trim().toUpperCase();
+      }
+
+      const nameLines = lines.filter(l => l.length > 3 && l.length < 50 && !l.match(/^\d+[\.,]?\d*$/) && !l.match(/^(usd|dls| peso)/i));
+      if (nameLines.length > 0) {
+        extractedData.name = nameLines[0].trim();
+      }
+
+      setPendingOCRData(extractedData);
       setPendingOCRImage(base64Image);
       setShowOCRVerification(true);
     } catch (error) {
-      console.error("AI Scan failed:", error);
+      console.error("OCR Scan failed:", error);
     } finally {
       setIsUploading(false);
     }
@@ -319,7 +388,7 @@ export function ProductForm({
       buyPriceMxn: 0,
       sellPriceMxn: 0,
       quantity: 1,
-      imageUrl: '',
+      imageUrls: [],
       currentStatus: 'COMPRADO',
       isShowcase: true,
       clientName: '',
@@ -700,13 +769,24 @@ export function ProductForm({
                       currentItem={currentItem}
                       onUpdate={(data) => updateItem(activeItemIndex, data)}
                       onScan={async (file) => {
-                        const reader = new FileReader();
-                        reader.onload = async (event) => {
-                          const base64 = event.target?.result as string;
-                          updateItem(activeItemIndex, { imageUrl: base64 });
-                          scanImageWithAI(base64);
-                        };
-                        reader.readAsDataURL(file);
+                        setIsUploading(true);
+                        try {
+                          const imageUrl = await uploadToCloudinary(file);
+                          if (imageUrl) {
+                            const currentImages = currentItem.imageUrls || [];
+                            updateItem(activeItemIndex, { imageUrls: [...currentImages, imageUrl] });
+                            const reader = new FileReader();
+                            reader.onload = async (event) => {
+                              const base64 = event.target?.result as string;
+                              scanImageWithAI(base64);
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        } catch (error) {
+                          console.error('Upload failed:', error);
+                        } finally {
+                          setIsUploading(false);
+                        }
                       }}
                     />
                     
@@ -1204,7 +1284,7 @@ export function ProductForm({
           <AnimatePresence>
             {showOCRVerification && (
               <OCRModal 
-                imageUrl={pendingOCRImage}
+                imageUrls={pendingOCRImage ? [pendingOCRImage] : []}
                 data={pendingOCRData}
                 totalItems={items.length}
                 currentItemIndex={activeItemIndex + 1}

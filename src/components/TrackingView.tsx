@@ -36,9 +36,9 @@ export function TrackingView({ product }: TrackingViewProps) {
         {/* Product Info Card */}
         <div className="bg-white rounded-3xl p-8 border border-brand-border shadow-sm space-y-6">
           <div className="flex flex-col md:flex-row gap-8 items-center">
-            {product.imageUrl ? (
+            {product.imageUrls && product.imageUrls.length > 0 ? (
               <div className="w-32 h-32 rounded-2xl overflow-hidden border border-brand-border bg-[#F8FAF9]">
-                <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" />
+                <img src={product.imageUrls[0]} alt={product.name} className="w-full h-full object-cover" />
               </div>
             ) : (
               <div className="w-32 h-32 rounded-2xl bg-[#F8FAF9] flex items-center justify-center border border-brand-border text-brand-border">

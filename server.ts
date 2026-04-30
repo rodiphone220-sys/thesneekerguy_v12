@@ -355,8 +355,11 @@ async function startServer() {
         return {
           id: `${idUnico}-${index}`, 
           originalId: row[0] || '', // ID_UNICO
-          createdAt: row[1] || '', // FECHA_REGISTRO
-          sku: row[2] || '', // NUMERO_PEDIDO
+          idCodeUsuario: row[1] || '', // ID_CODE_USUARIO
+          creadoPorCode: row[2] || '', // CREADO_POR_CODE
+          actualizadoPorCode: row[3] || '', // ACTUALIZADO_POR_CODE
+          createdAt: row[4] || '', // FECHA_REGISTRO
+          sku: row[5] || '', // NUMERO_PEDIDO
           clientName: row[3] || '', // CLIENTE
           clientEmail: row[4] || '', // CLIENTE_EMAIL
           clientPhone: row[5] || '', // CLIENTE_TELEFONO
@@ -418,13 +421,17 @@ async function startServer() {
       const productsArray = Array.isArray(body) ? body : [body];
       
       const rowsToAppend = productsArray.map((p, idx) => {
-        const rowSize = 40; // A to AN (index 39)
+        const rowSize = 43; // Extended: A to AQ (42 columns) to include user tracking
         const rowData = new Array(rowSize).fill('');
         
         // Fill known columns from the provided structure (sneeker_guy_datasheet_v3_Line)
-        rowData[0] = `SNK-${Date.now()}-${idx}`; // ID_UNICO (A)
-        rowData[1] = new Date().toLocaleDateString(); // FECHA_REGISTRO (B)
-        rowData[2] = p.sku || ''; // NUMERO_PEDIDO (C)
+        rowData[0] = p.originalId || `SNK-${Date.now()}-${idx}`; // ID_UNICO (A)
+        rowData[1] = p.idCodeUsuario || ''; // ID_CODE_USUARIO (B)
+        rowData[2] = p.creadoPorCode || ''; // CREADO_POR_CODE (C)
+        rowData[3] = p.actualizadoPorCode || ''; // ACTUALIZADO_POR_CODE (D)
+        rowData[4] = p.createdAt || new Date().toLocaleDateString(); // FECHA_REGISTRO (E)
+        rowData[5] = p.sku || ''; // NUMERO_PEDIDO (F)
+        rowData[6] = p.clientName || ''; // CLIENTE (G)
         rowData[3] = p.clientName || ''; // CLIENTE (D)
         rowData[4] = p.clientEmail || ''; // CLIENTE_EMAIL (E)
         rowData[5] = p.clientPhone || ''; // CLIENTE_TELEFONO (F)
@@ -605,6 +612,79 @@ async function startServer() {
       res.json({ success: true, order });
     } catch (error: any) {
       console.error('Error adding order:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // GET /api/users - Fetch all users from USUARIOS sheet
+  app.get('/api/users', async (req, res) => {
+    const auth = getAuthClient();
+    if (!auth) {
+      console.warn('[API] Sin credenciales - retornando usuarios locales');
+      return res.json([]);
+    }
+    
+    try {
+      const response: any = await sheets.spreadsheets.values.get({
+        auth,
+        spreadsheetId: SHEET_ID,
+        range: "'USUARIOS'!A2:I",
+      });
+
+      const rows = response.data.values;
+      if (!rows) return res.json([]);
+
+      const users = rows.map((row, index) => ({
+        id: row[0] || `user-${index}`,
+        idCode: row[1] || '',
+        name: row[2] || '',
+        email: row[3] || '',
+        role: row[4] || 'VENTAS',
+        createdAt: row[5] || '',
+        lastLogin: row[6] || '',
+        permissions: row[7] ? row[7].split(',') : [],
+        active: row[8] === 'TRUE' || row[8] === '1' || !row[8],
+      }));
+
+      res.json(users);
+    } catch (error: any) {
+      console.error('Error fetching users:', error.message);
+      res.json([]);
+    }
+  });
+
+  // POST /api/users - Add new user to USUARIOS sheet
+  app.post('/api/users', async (req, res) => {
+    const auth = getAuthClient();
+    if (!auth) {
+      return res.status(500).json({ error: 'Sin credenciales' });
+    }
+
+    try {
+      const { user } = req.body;
+      const rowData = [
+        user.id || '',
+        user.idCode || '',
+        user.name || '',
+        user.email || '',
+        user.role || 'VENTAS',
+        user.createdAt || new Date().toISOString(),
+        user.lastLogin || '',
+        (user.permissions || []).join(','),
+        user.active ? 'TRUE' : 'FALSE',
+      ];
+
+      await sheets.spreadsheets.values.append({
+        auth,
+        spreadsheetId: SHEET_ID,
+        range: "'USUARIOS'!A2",
+        valueInputOption: 'USER_ENTERED',
+        requestBody: { values: [rowData] },
+      });
+
+      res.json({ success: true, user });
+    } catch (error: any) {
+      console.error('Error adding user:', error);
       res.status(500).json({ error: error.message });
     }
   });

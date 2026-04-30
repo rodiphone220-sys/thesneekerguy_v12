@@ -8,7 +8,10 @@ import {
   Sparkles,
   ShieldCheck,
   Zap,
-  Info
+  Info,
+  Mail,
+  Smartphone,
+  Phone
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { SystemSettings as SettingsType } from '../types';
@@ -52,6 +55,51 @@ export function SystemSettings({ settings, onUpdateSettings }: SystemSettingsPro
           {isSaved ? 'Guardado' : 'Guardar Cambios'}
         </motion.button>
       </div>
+
+      {/* NEW SECTION: Communication and Reports */}
+      <section className="bg-brand-surface border border-brand-border rounded-2xl overflow-hidden shadow-sm">
+        <div className="p-6 border-b border-brand-border bg-brand-bg/30">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-blue-600 rounded-lg text-white">
+              <Smartphone size={18} />
+            </div>
+            <div>
+              <h3 className="font-bold text-sm text-brand-ink">Comunicación y Reportes</h3>
+              <p className="text-[10px] text-brand-muted font-medium">Configura canales de envío y recepción</p>
+            </div>
+          </div>
+        </div>
+        
+        <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="space-y-2">
+            <label className="flex items-center gap-2 text-[10px] font-bold text-brand-label uppercase tracking-widest px-1">
+              <Smartphone size={12} /> WhatsApp de Envío (Formato: 521...)
+            </label>
+            <input 
+              type="text"
+              className="w-full p-4 bg-brand-bg border-none rounded-xl text-xs outline-none focus:ring-1 focus:ring-brand-ink transition-all text-brand-ink font-bold"
+              value={localSettings.shareWhatsAppNumber || ''}
+              onChange={e => handleChange('shareWhatsAppNumber', e.target.value)}
+              placeholder="Ej: 521XXXXXXXXXX"
+            />
+            <p className="text-[9px] text-brand-muted px-1 italic">Número destino por defecto para compartir reportes.</p>
+          </div>
+
+          <div className="space-y-2">
+            <label className="flex items-center gap-2 text-[10px] font-bold text-brand-label uppercase tracking-widest px-1">
+              <Mail size={12} /> Email de Compartición
+            </label>
+            <input 
+              type="email"
+              className="w-full p-4 bg-brand-bg border-none rounded-xl text-xs outline-none focus:ring-1 focus:ring-brand-ink transition-all text-brand-ink font-bold"
+              value={localSettings.shareEmailAddress || ''}
+              onChange={e => handleChange('shareEmailAddress', e.target.value)}
+              placeholder="ejemplo@correo.com"
+            />
+            <p className="text-[9px] text-brand-muted px-1 italic">Email receptor por defecto para los reportes CSV.</p>
+          </div>
+        </div>
+      </section>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Messenger AI Control */}

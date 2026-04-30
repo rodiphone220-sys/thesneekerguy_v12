@@ -2,8 +2,8 @@ import React from 'react';
 import { Product, OrderStatus } from '../types';
 import { cn, formatCurrency } from '../lib/utils';
 import { StatusPipeline } from './StatusPipeline';
-import { MoreHorizontal, Edit2, Trash2, ArrowUpRight, ChevronDown, Check } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { MoreHorizontal, Edit2, Trash2, ArrowUpRight, ChevronDown, Check, ChevronLeft, ChevronRight } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface ProductCardProps {
   product: Product;
@@ -16,9 +16,14 @@ interface ProductCardProps {
 export function ProductCard({ product, globalMarkup = 35, onEdit, onStatusChange, onDelete }: ProductCardProps) {
   const [showActions, setShowActions] = React.useState(false);
   const [justUpdated, setJustUpdated] = React.useState(false);
-
-  const displayPriceMxn = (product.sellPriceMxn && product.sellPriceMxn > 0) 
-    ? product.sellPriceMxn 
+  const [currentImageIndex, setCurrentImageIndex] = React.useState(0);
+  const [isHovered, setIsHovered] = React.useState(false);
+  
+  const imageUrls = product.imageUrls || [];
+  const hasMultipleImages = imageUrls.length > 1;
+  
+  const displayPriceMxn = (product.sellPriceMxn && product.sellPriceMxn > 0)  
+    ? product.sellPriceMxn  
     : Math.round((product.buyPriceMxn || 0) * (1 + (globalMarkup / 100)));
 
   React.useEffect(() => {
@@ -78,16 +83,39 @@ export function ProductCard({ product, globalMarkup = 35, onEdit, onStatusChange
       }}
       className="bg-white border border-brand-border rounded-xl overflow-hidden flex flex-col h-full transition-all group shadow-sm"
     >
-      <div className="relative aspect-video bg-brand-bg border-b border-brand-border overflow-hidden">
-        <img 
-          src={product.imageUrl || 'https://picsum.photos/seed/placeholder/400/400'} 
+<div className="relative aspect-video bg-brand-bg border-b border-brand-border overflow-hidden">
+        <img
+          src={imageUrls[currentImageIndex] || 'https://picsum.photos/seed/placeholder/400/400'} 
           alt={product.name}
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-          referrerPolicy="no-referrer"
+          className="w-2 full h-2 full object-cover group-hover:scale-105 transition-2 transform duration-500"
+          referrerPolicy="no-2 referrer"
           onError={(e) => {
             (e.target as HTMLImageElement).src = 'https://picsum.photos/seed/error/400/400';
           }}
         />
+        
+        {hasMultipleImages && (
+          <>
+            <button 
+              onClick={(e) => { e.stopPropagation(); setCurrentImageIndex((prev) => (prev === 0 ? imageUrls.length - 1 : prev - 1)); }}
+              className="absolute left-2 top-1/2 -translate-y-1/2 w-7 h-7 bg-black/60 hover:bg-black/80 rounded-full flex items-center justify-center text-white transition-2 all"
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <button 
+              onClick={(e) => { e.stopPropagation(); setCurrentImageIndex((prev) => (prev === imageUrls.length - 1 ? 0 : prev + 1)); }}
+              className="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 bg-black/60 hover:bg-black/80 rounded-full flex items-center justify-center text-white transition-2 all"
+            >
+              <ChevronRight size={16} />
+            </button>
+            <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5">
+              {imageUrls.map((_, idx) => (
+                <div key={idx} className={cn("w-1.5 h-1.5 rounded-full transition-all", idx === currentImageIndex ? "bg-2 white" : "bg-white/40")} />
+              ))}
+            </div>
+          </>
+        )}
+        
         <div className="absolute top-3 right-3 z-10">
           <motion.button 
             whileHover={{ scale: 1.1 }}

@@ -33,10 +33,12 @@ import {
   AlertTriangle,
   MessageSquare,
   Sun,
-  Moon
+  Moon,
+  ShieldCheck,
+  Copy
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Product, OrderStatus, CustomerOrder, Customer, Category } from './types';
+import { Product, OrderStatus, CustomerOrder, Customer, Category, AppUser } from './types';
 import { INITIAL_PRODUCTS } from './data/mockData';
 import { INITIAL_CATEGORIES } from './data/categories';
 import { ProductCard } from './components/ProductCard';
@@ -51,14 +53,20 @@ import { TrackingManager } from './components/TrackingManager';
 import { TrackingView } from './components/TrackingView';
 import { SystemSettings } from './components/SystemSettings';
 import { CustomerManagement } from './components/CustomerManagement';
+import { UserManagement } from './components/UserManagement';
 import { SneakerSearchEngine } from './components/SneakerSearchEngine';
+import { AuthView } from './components/AuthView';
 import { cn, formatCurrency, formatDate, exportToCSV } from './lib/utils';
 import { SystemSettings as SettingsType } from './types';
 
-type ActiveTab = 'dashboard' | 'all' | 'pending' | 'delivered' | 'stock' | 'zafi' | 'orders' | 'finances' | 'settings' | 'catalog' | 'messaging' | 'customers';
+type ActiveTab = 'dashboard' | 'all' | 'pending' | 'delivered' | 'stock' | 'zafi' | 'orders' | 'finances' | 'settings' | 'catalog' | 'messaging' | 'customers' | 'users';
 type ViewType = 'visual' | 'excel';
 
 export default function App() {
+  const [currentUser, setCurrentUser] = React.useState<AppUser | null>(() => {
+    const saved = localStorage.getItem('stockmaster_current_user');
+    return saved ? JSON.parse(saved) : null;
+  });
   const [products, setProducts] = React.useState<Product[]>([]);
   const [customers, setCustomers] = React.useState<Customer[]>([]);
   const [customerOrders, setCustomerOrders] = React.useState<CustomerOrder[]>([]);
@@ -76,7 +84,9 @@ export default function App() {
       isAiPrimaryResponder: true,
       aiPrimaryPrompt: "Eres un asistente experto en logística para StockMaster. Eres profesional, conciso y directo. Responde siempre de manera corta y precisa. Si no conoces la respuesta, indica que conectarás con un humano.",
       aiGeneralPrompt: "Asistente inteligente de soporte interno para el equipo técnico de StockMaster.",
-      sneekyBotPrompt: "Eres Sneeky, el bot simpático de StockMaster. Tu estilo es amigable y servicial."
+      sneekyBotPrompt: "Eres Sneeky, el bot simpático de StockMaster. Tu estilo es amigable y servicial.",
+      shareWhatsAppNumber: "",
+      shareEmailAddress: ""
     };
   });
 
@@ -303,7 +313,12 @@ export default function App() {
     try {
       if (editingProduct && !Array.isArray(data)) {
         // Build the full product state for update
-        const updatedProduct = { ...editingProduct, ...data, updatedAt: new Date().toISOString() };
+        const updatedProduct = { 
+          ...editingProduct, 
+          ...data, 
+          actualizadoPorCode: currentUser?.idCode || '',
+          updatedAt: new Date().toISOString() 
+        };
         
         const response = await fetch(`/api/products/${editingProduct.originalId || editingProduct.id}`, {
           method: 'PUT',
@@ -324,10 +339,18 @@ export default function App() {
           alert(`Error al actualizar: ${errorMsg}`);
         }
       } else {
+        // Add new product with creator code
+        const newProduct = {
+          ...data,
+          creadoPorCode: currentUser?.idCode || '',
+          actualizadoPorCode: '',
+          createdAt: new Date().toISOString()
+        };
+        
         const response = await fetch('/api/products', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data),
+          body: JSON.stringify(newProduct),
         });
 
         if (response.ok) {
@@ -435,8 +458,44 @@ export default function App() {
     exportToCSV(exportData, `StockMaster_${activeTab}_${new Date().toISOString().split('T')[0]}`);
   };
 
+  const handleShareWhatsApp = () => {
+    const text = `StockMaster Pro - Reporte ${activeTab.toUpperCase()}\nArtículos: ${filteredProducts.length}\nEstado: ${statusFilter}\nLink: ${window.location.href}`;
+    const number = systemSettings.shareWhatsAppNumber || "";
+    window.open(`https://wa.me/${number}?text=${encodeURIComponent(text)}`, '_blank');
+  };
+
+  const handleShareEmail = () => {
+    const subject = `StockMaster Report - ${activeTab.toUpperCase()}`;
+    const body = `Reporte generado: ${new Date().toLocaleString()}\nCategoría: ${activeTab}\nStatus Filtro: ${statusFilter}\nTotal de artículos: ${filteredProducts.length}\n\nPuede ver los detalles en el sistema.`;
+    const email = systemSettings.shareEmailAddress || "";
+    window.location.href = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('stockmaster_current_user');
+    setCurrentUser(null);
+    setActiveTab('dashboard');
+  };
+
+  const hasPermission = (module: string, action?: string) => {
+    if (!currentUser) return false;
+    if (currentUser.role === 'MASTER') return true;
+    return currentUser.permissions.some(p => p.module === module && p.isEnabled);
+  };
+
   if (publicTrackingProduct) {
     return <TrackingView product={publicTrackingProduct} />;
+  }
+
+  if (!currentUser) {
+    return <AuthView onLogin={(user) => {
+      localStorage.setItem('stockmaster_current_user', JSON.stringify(user));
+      setCurrentUser(user);
+    }} />;
   }
 
   return (
@@ -482,12 +541,14 @@ export default function App() {
               icon={<LayoutDashboard size={18} />} 
               label="Pipeline Dashboard" 
             />
-            <NavItem 
-              active={activeTab === 'finances'} 
-              onClick={() => { setActiveTab('finances'); if(window.innerWidth < 1024) setIsSidebarOpen(false); }} 
-              icon={<DollarSign size={18} />} 
-              label="Finanzas" 
-            />
+            {hasPermission('finances') && (
+              <NavItem 
+                active={activeTab === 'finances'} 
+                onClick={() => { setActiveTab('finances'); if(window.innerWidth < 1024) setIsSidebarOpen(false); }} 
+                icon={<DollarSign size={18} />} 
+                label="Finanzas" 
+              />
+            )}
 
             {/* Status Filtering Section */}
             <div className="px-4 py-6">
@@ -591,6 +652,14 @@ export default function App() {
                 <Smartphone size={16} />
                 Portal Clientes
               </button>
+              {currentUser.role === 'MASTER' && (
+                <NavItem 
+                  active={activeTab === 'users'} 
+                  onClick={() => { setActiveTab('users'); if(window.innerWidth < 1024) setIsSidebarOpen(false); }} 
+                  icon={<ShieldCheck size={18} />} 
+                  label="Gestión Usuarios" 
+                />
+              )}
               <NavItem 
                 active={activeTab === 'settings'} 
                 onClick={() => { setActiveTab('settings'); if(window.innerWidth < 1024) setIsSidebarOpen(false); }} 
@@ -602,8 +671,20 @@ export default function App() {
         </div>
 
         <div className="mt-auto p-6 border-t border-brand-border min-w-[240px]">
-          <button className="flex items-center gap-2 text-sm font-medium text-brand-muted hover:text-brand-ink transition-colors">
-            <LogOut size={16} /> Salir Sesión
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-full bg-brand-ink text-brand-accent flex items-center justify-center font-black text-sm">
+              {currentUser.name[0].toUpperCase()}
+            </div>
+            <div className="flex flex-col min-w-0">
+              <span className="text-xs font-bold text-brand-ink truncate">{currentUser.name}</span>
+              <span className="text-[9px] font-black text-brand-muted uppercase tracking-widest">{currentUser.role}</span>
+            </div>
+          </div>
+          <button 
+            onClick={handleLogout}
+            className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold uppercase tracking-widest text-brand-muted hover:text-brand-ink hover:bg-brand-bg rounded-lg transition-all"
+          >
+            <LogOut size={14} /> Salir de Sesión
           </button>
         </div>
       </motion.aside>
@@ -714,6 +795,24 @@ export default function App() {
                     >
                       <Printer size={14} /> <span className="hidden lg:inline">Imprimir</span>
                     </motion.button>
+                    <div className="flex items-center gap-1.5 bg-brand-bg p-1 rounded-xl border border-brand-border shrink-0">
+                      <motion.button 
+                        whileTap={{ scale: 0.95 }}
+                        onClick={handleShareWhatsApp}
+                        className="flex items-center justify-center p-1.5 rounded-lg text-green-600 hover:bg-green-50 transition-all"
+                        title="Compartir WhatsApp"
+                      >
+                        <Smartphone size={16} />
+                      </motion.button>
+                      <motion.button 
+                        whileTap={{ scale: 0.95 }}
+                        onClick={handleShareEmail}
+                        className="flex items-center justify-center p-1.5 rounded-lg text-brand-muted hover:text-brand-ink hover:bg-brand-surface transition-all"
+                        title="Compartir Email"
+                      >
+                        <MessageSquare size={16} />
+                      </motion.button>
+                    </div>
                     <motion.button 
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
@@ -781,7 +880,8 @@ export default function App() {
           )}
           {!isLoading && activeTab === 'messaging' && <MessagingView settings={systemSettings} />}
           {!isLoading && activeTab === 'settings' && <SystemSettings settings={systemSettings} onUpdateSettings={setSystemSettings} />}
-          {!isLoading && activeTab === 'finances' && (
+          {!isLoading && activeTab === 'users' && currentUser.role === 'MASTER' && <UserManagement currentUser={currentUser} />}
+          {!isLoading && activeTab === 'finances' && hasPermission('finances') && (
             <FinanceView 
               products={products} 
               globalMarkup={globalMarkup} 
@@ -1383,10 +1483,24 @@ export default function App() {
                   </p>
                 </div>
               <div className="grid grid-cols-1 gap-4 text-left">
-                <SettingsRow title="Costo Logístico Promedio" value="$12.00 USD" />
-                <SettingsRow title="Tipo de Cambio Base" value="18.50" />
-                <SettingsRow title="Modo Hoja de Cálculo" value="Excel Compatible" />
-                <SettingsRow title="Exportación Automática" value="Desactivada" />
+                  {currentUser.idCode && (
+                    <div className="bg-brand-ink p-4 rounded-lg flex items-center justify-between">
+                      <div>
+                        <p className="text-[10px] font-bold text-brand-muted uppercase tracking-widest">Tu Código Único</p>
+                        <p className="text-2xl font-black text-white tracking-[0.2em]">{currentUser.idCode}</p>
+                      </div>
+                      <button 
+                        onClick={() => navigator.clipboard.writeText(currentUser.idCode || '')}
+                        className="w-10 h-10 bg-white/10 hover:bg-white/20 rounded-lg flex items-center justify-center text-white transition-all"
+                      >
+                        <Copy size={18} />
+                      </button>
+                    </div>
+                  )}
+                  <SettingsRow title="Costo Logístico Promedio" value="$12.00 USD" />
+                  <SettingsRow title="Tipo de Cambio Base" value="18.50" />
+                  <SettingsRow title="Modo Hoja de Cálculo" value="Excel Compatible" />
+                  <SettingsRow title="Exportación Automática" value="Desactivada" />
 
                 <div className="pt-4 space-y-3">
                   <button 

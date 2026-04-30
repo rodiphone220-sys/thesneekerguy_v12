@@ -34,37 +34,52 @@ export interface Product {
   quantity: number;
   minStock: number;
   currentStatus: OrderStatus;
-  destino?: 'EL PASO' | 'DALLAS' | 'DIRECTO A MEXICO';
-  imageUrl?: string;
+  destino?: 'EL PASO' | 'DALLAS' | 'MX';
+  imageUrls?: string[];
+  idCodeUsuario?: string;
+  creadoPorCode?: string;
+  actualizadoPorCode?: string;
   clientName?: string;
   clientEmail?: string;
   clientPhone?: string;
   clientAddress?: string;
   clientIg?: string;
   referido_por?: string;
-  referenciado_por?: string; // Col H
-  metodo_pago_cliente?: string; // Col I
-  tipo_compra?: string; // Col N
-  costo_envio_usa?: number; // Col T
-  estado_envio_usa?: string; // Col U
-  estado_entrega_usa?: string; // Col V
-  ubicacion_actual?: string; // Col W
-  fecha_ingreso_zafiro?: string; // Col X
-  incluido_en_corte_zafiro?: string; // Col Y
-  estado_entrega_mx?: string; // Col Z
-  fecha_entrega_cliente?: string; // Col AA
-  anticipo_abonado?: number; // Col AB
-  total_pagado?: number; // Col AC
-  saldo_pendiente?: number; // Col AD
-  abonado_amex?: number; // Col AE
-  utilidad_tomada?: number; // Col AF
-  revisado_rodrigo?: string; // Col AG
+  referenciado_por?: string;
+  metodo_pago_cliente?: string;
+  tipo_compra?: string;
+  costo_envio_usa?: number;
+  estado_envio_usa?: string;
+  estado_entrega_usa?: string;
+  ubicacion_actual?: string;
+  fecha_ingreso_zafiro?: string;
+  incluido_en_corte_zafiro?: string;
+  estado_entrega_mx?: string;
+  fecha_entrega_cliente?: string;
+  anticipo_abonado?: number;
+  total_pagado?: number;
+  saldo_pendiente?: number;
+  abonado_amex?: number;
+  utilidad_tomada?: number;
+  revisado_rodrigo?: string;
   notes?: string;
   gender?: 'HOMBRE' | 'MUJER' | 'UNISEX';
   color_description?: string;
   createdAt: string;
   updatedAt: string;
   isShowcase?: boolean;
+}
+
+export interface ExtraExpense {
+  id: string;
+  name: string;
+  amount: number;
+  currency: 'USD' | 'MXN';
+  category: string;
+  date: string;
+  card?: string;
+  notes?: string;
+  imageUrl?: string;
 }
 
 export interface StockMovement {
@@ -122,6 +137,16 @@ export interface CustomerOrder {
   prioridad?: 'Normal' | 'Urgente' | 'Alta';
 }
 
+export interface SystemSettings {
+  isAiAssistantEnabled: boolean;
+  isAiPrimaryResponder: boolean;
+  aiPrimaryPrompt: string;
+  aiGeneralPrompt: string;
+  sneekyBotPrompt: string;
+  shareWhatsAppNumber?: string;
+  shareEmailAddress?: string;
+}
+
 export interface DashboardStats {
   totalItems: number;
   lowStockItems: number;
@@ -130,10 +155,27 @@ export interface DashboardStats {
   statusCounts: Record<OrderStatus, number>;
 }
 
-export interface SystemSettings {
-  isAiAssistantEnabled: boolean;
-  isAiPrimaryResponder: boolean;
-  aiPrimaryPrompt: string;
-  aiGeneralPrompt: string;
-  sneekyBotPrompt: string;
+export type UserRole = 'MASTER' | 'CONTABILIDAD' | 'VENTAS' | 'ATENCION' | 'DEMO';
+
+export interface UserPermission {
+  id: string;
+  name: string;
+  description: string;
+  module: 'inventory' | 'finances' | 'customers' | 'settings' | 'messaging';
+  action: 'read' | 'write' | 'delete' | 'admin';
+  isEnabled: boolean;
+}
+
+export interface AppUser {
+  id: string;
+  email: string;
+  password?: string;
+  name: string;
+  role: UserRole;
+  idCode: string;
+  masterId?: string;
+  linkedToMaster?: string;
+  permissions: UserPermission[];
+  createdAt: string;
+  lastLogin?: string;
 }

@@ -67,12 +67,38 @@ export function LectorOCR({ onScan, onUpdate, currentItem, isScanning }: LectorO
   const [showModal, setShowModal] = useState(false);
   const previewUrl = useObjectURL(selectedFile);
   
-  // Use currentItem.imageUrl as fallback if no local file is selected yet
-  const displayImage = previewUrl || currentItem.imageUrl;
+  const imageUrls = currentItem.imageUrls || [];
+  const displayImage = previewUrl || imageUrls[0] || '';
 
   const handleFile = (file: File) => {
     setSelectedFile(file);
     onScan(file);
+  };
+
+  const handleBaseImage = async (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    try {
+      const res = await fetch('http://localhost:3000/api/upload', {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+      if (data.link) {
+        const currentImages = currentItem.imageUrls || [];
+        onUpdate({ imageUrls: [...currentImages, data.link] } as any);
+      }
+    } catch (error) {
+      console.error('Upload failed:', error);
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const base64 = event.target?.result as string;
+        const currentImages = currentItem.imageUrls || [];
+        onUpdate({ imageUrls: [...currentImages, base64] } as any);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   return (
@@ -83,32 +109,51 @@ export function LectorOCR({ onScan, onUpdate, currentItem, isScanning }: LectorO
         isScanning={isScanning}
         onReset={() => {
           setSelectedFile(null);
-          onUpdate({ imageUrl: '' } as any);
+          onUpdate({ imageUrls: [] } as any);
         }}
         onZoom={() => setShowModal(true)}
       />
 
-      <motion.button
-        whileHover={!isScanning ? { scale: 1.02 } : {}}
-        whileTap={!isScanning ? { scale: 0.98 } : {}}
-        type="button"
-        disabled={isScanning || !displayImage}
-        onClick={() => selectedFile && onScan(selectedFile)}
-        className={cn(
-          "w-full py-4 rounded-2xl flex items-center justify-center gap-3 font-black text-[11px] uppercase tracking-[0.2em] transition-all border-2",
-          isScanning || !displayImage
-            ? "bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed" 
-            : "bg-gradient-to-br from-[#10B981] to-[#3B82F6] border-white/20 text-white shadow-xl shadow-brand-accent/20"
-        )}
-      >
-        {isScanning ? <Loader2 className="animate-spin" size={18} /> : <Sparkles size={18} />}
-        {isScanning ? 'Procesando Inteligencia Artificial...' : 'Escanear con Gemini AI'}
-      </motion.button>
+      <div className="grid grid-cols-2 gap-3">
+        <motion.button
+          whileHover={!isScanning ? { scale: 1.02 } : {}}
+          whileTap={!isScanning ? { scale: 0.98 } : {}}
+          type="button"
+          disabled={isScanning || !displayImage}
+          onClick={() => selectedFile && onScan(selectedFile)}
+          className={cn(
+            "py-3 rounded-xl flex items-center justify-center gap-2 font-black text-[10px] uppercase tracking-wider transition-all border-2",
+            isScanning || !displayImage
+              ? "bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed" 
+              : "bg-gradient-to-br from-[#10B981] to-[#3B82F6] border-white/20 text-white shadow-lg"
+          )}
+        >
+          {isScanning ? <Loader2 className="animate-spin" size={16} /> : <Sparkles size={16} />}
+          OCR AI
+        </motion.button>
+
+        <label className={cn(
+          "py-3 rounded-xl flex items-center justify-center gap-2 font-black text-[10px] uppercase tracking-wider transition-all border-2 border-dashed cursor-pointer",
+          "bg-white border-brand-border text-brand-ink hover:bg-brand-surface"
+        )}>
+          <input 
+            type="file" 
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleBaseImage(file);
+            }}
+          />
+          <Upload size={16} />
+          Imagen Base
+        </label>
+      </div>
 
       <AnimatePresence>
         {showModal && displayImage && (
           <OCRModal 
-            imageUrl={displayImage} 
+            imageUrls={displayImage ? [displayImage] : []} 
             data={currentItem} 
             onUpdate={onUpdate}
             onClose={() => setShowModal(false)} 
@@ -211,8 +256,8 @@ function ImageDropzone({ onFileSelect, displayImage, isScanning, onReset, onZoom
   );
 }
 
-export function OCRModal({ imageUrl, data, onUpdate, onClose, totalItems = 1, currentItemIndex = 1 }: { 
-  imageUrl: string, 
+export function OCRModal({ imageUrls = [], data, onUpdate, onClose, totalItems = 1, currentItemIndex = 1 }: {  
+  imageUrls: string[],
   data: any, 
   onUpdate: (data: Partial<OCRData>) => void,
   onClose: () => void,
@@ -221,157 +266,116 @@ export function OCRModal({ imageUrl, data, onUpdate, onClose, totalItems = 1, cu
 }) {
   const [zoom, setZoom] = useState(100);
   
-  return (
+return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-xl flex items-center justify-center p-0 lg:p-6 overflow-hidden"
+      className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-xl flex items-center justify-center p-2 md:p-4"
     >
       <motion.div 
         initial={{ scale: 0.98, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.98, opacity: 0 }}
-        className="w-full max-w-[1600px] h-full lg:h-[95vh] flex flex-col bg-[#0F0F0F] rounded-[32px] overflow-hidden shadow-[0_0_100px_rgba(0,0,0,0.8)] border border-white/10 relative"
+        className="w-full h-full max-w-[95vw] max-h-[95vh] flex flex-col bg-[#0F0F0F] rounded-2xl md:rounded-3xl overflow-hidden shadow-2xl border border-white/10 relative"
       >
-        {/* Header - High End Dark Mode */}
-        <header className="px-8 py-5 flex items-center justify-between border-b border-white/5 bg-[#141414]">
-          <div className="flex items-center gap-4">
-            <div className="w-10 h-10 rounded-xl bg-brand-accent/20 flex items-center justify-center text-brand-accent shadow-[0_0_20px_rgba(16,185,129,0.2)]">
-              <Search size={22} />
+        {/* Header */}
+        <header className="px-4 py-3 flex items-center justify-between border-b border-white/5 bg-[#141414] shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-brand-accent/20 flex items-center justify-center text-brand-accent">
+              <Search size={18} />
             </div>
             <div>
-              <h2 className="text-xl font-black text-white uppercase tracking-tighter italic">Verificación OCR</h2>
-              <p className="text-[10px] text-brand-muted font-bold uppercase tracking-widest leading-none">
-                Ítem {currentItemIndex} de {totalItems} • Compara la imagen con los datos detectados
+              <h2 className="text-sm font-black text-white uppercase">Verificación OCR</h2>
+              <p className="text-[9px] text-brand-muted uppercase">
+                Ítem {currentItemIndex} de {totalItems}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-6">
-            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-white/5 rounded-full border border-white/10">
-              <button type="button" onClick={() => setZoom(z => Math.max(50, z - 25))} className="p-1 hover:text-white text-brand-muted transition-colors"><ZoomOut size={16} /></button>
-              <span className="text-[10px] font-mono font-black text-white px-2">{zoom}%</span>
-              <button type="button" onClick={() => setZoom(z => Math.min(300, z + 25))} className="p-1 hover:text-white text-brand-muted transition-colors"><ZoomIn size={16} /></button>
-              <div className="w-px h-3 bg-white/10 mx-1" />
-              <button type="button" className="p-1 hover:text-white text-brand-muted transition-colors"><Maximize size={16} /></button>
-            </div>
-
-            <button 
-              type="button"
-              onClick={onClose}
-              className="w-12 h-12 bg-white/5 hover:bg-white/10 border border-white/10 text-brand-muted hover:text-white rounded-2xl transition-all flex items-center justify-center"
-            >
-              <X size={24} />
-            </button>
-          </div>
+          <button 
+            type="button"
+            onClick={onClose}
+            className="w-9 h-9 bg-white/5 hover:bg-white/10 text-brand-muted hover:text-white rounded-lg transition-all flex items-center justify-center"
+          >
+            <X size={20} />
+          </button>
         </header>
 
-        <div className="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
-          {/* Left: Image Side with Custom Controls */}
-          <div className="flex-1 bg-[#050505] relative overflow-hidden flex flex-col border-r border-white/5">
-            <div className="flex-1 overflow-auto custom-scrollbar flex items-center justify-center p-12 bg-[radial-gradient(circle_at_center,_#111_0%,_transparent_100%)]">
-              <motion.div 
-                style={{ scale: zoom / 100 }}
-                className="transition-transform duration-300"
-              >
-                <img 
-                  src={imageUrl} 
-                  alt="OCR Verification" 
-                  className="max-h-[75vh] w-auto rounded-xl shadow-[0_40px_80px_rgba(0,0,0,0.6)] border border-white/5 pointer-events-none select-none"
-                />
-              </motion.div>
-            </div>
-
-            {/* Bottom Float Controls */}
-            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 bg-[#1A1A1A]/80 backdrop-blur-xl px-6 py-3 rounded-2xl border border-white/10 flex items-center gap-6 shadow-2xl">
-               <button type="button" onClick={() => setZoom(z => Math.max(50, z - 25))} className="p-2 text-white/50 hover:text-white hover:bg-white/5 rounded-lg border border-white/5 transition-all"><ZoomOut size={18} /></button>
-               <span className="text-[12px] font-mono font-black text-white min-w-[3rem] text-center">{zoom}%</span>
-               <button type="button" onClick={() => setZoom(z => Math.min(300, z + 25))} className="p-2 text-white/50 hover:text-white hover:bg-white/5 rounded-lg border border-white/5 transition-all"><ZoomIn size={18} /></button>
-               <div className="w-px h-6 bg-white/10" />
-               <button type="button" onClick={() => setZoom(100)} className="p-2 text-white/50 hover:text-white hover:bg-white/5 rounded-lg border border-white/5 transition-all"><Maximize size={18} /></button>
-            </div>
+        {/* Content - stack on mobile, side by side on desktop */}
+        <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+          {/* Left: Image */}
+          <div className="flex-1 bg-[#050505] relative overflow-hidden flex items-center justify-center p-4">
+            <img 
+              src={imageUrls[0] || ''} 
+              alt="OCR Verification" 
+              className="max-w-full max-h-full object-contain rounded-lg"
+            />
           </div>
 
-          {/* Right: Detected Data Dashboard */}
-          <div className="w-full lg:w-[480px] bg-[#111111] border-l border-white/5 p-10 lg:p-14 flex flex-col justify-between">
-            <div className="space-y-12">
-              <div>
-                <h3 className="text-2xl font-black text-white uppercase tracking-tighter mb-1">Datos Detectados por OCR</h3>
-                <div className="w-12 h-1 bg-brand-accent rounded-full" />
-              </div>
-
-              <div className="space-y-8 overflow-y-auto max-h-[55vh] pr-4 custom-scrollbar-dark">
-                <QuickEditField 
-                  label="Categoría" 
-                  value={data.category} 
-                  options={['CALZADO', 'ACCESORIOS', 'STREETWEAR', 'COLECCIONABLES', 'OTROS']}
-                  onChange={val => onUpdate({ category: val })} 
-                />
-                
-                <div className="grid grid-cols-1 gap-6">
-                  <QuickEditField 
-                    label="Marca" 
-                    value={data.brand} 
-                    placeholder="Ej: Nike"
-                    onChange={val => onUpdate({ brand: val })} 
-                  />
-                  <QuickEditField 
-                    label="Modelo" 
-                    value={data.name} 
-                    placeholder="Ej: Air Jordan 1..."
-                    onChange={val => onUpdate({ name: val })} 
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-6">
-                  <QuickEditField 
-                    label="Género" 
-                    value={data.gender || 'UNISEX'} 
-                    options={['HOMBRE', 'MUJER', 'UNISEX', 'KIDS']}
-                    onChange={val => onUpdate({ gender: val })} 
-                  />
-                  <QuickEditField 
-                    label="Color" 
-                    value={data.color_description || ''} 
-                    placeholder="Forest Fog"
-                    onChange={val => onUpdate({ color_description: val.toUpperCase() })} 
-                  />
-                </div>
-                
-                <QuickEditField 
-                  label="Talla" 
-                  value={data.size || ''} 
-                  placeholder="29W x 29L"
-                  onChange={val => onUpdate({ size: val } as any)} 
-                />
-
-                <div className="pt-4 border-t border-white/5">
-                   <QuickEditField 
-                    label="Precio USD" 
-                    value={data.buyPriceUsd?.toString() || ''} 
-                    placeholder="0.00"
-                    onChange={val => onUpdate({ buyPriceUsd: parseFloat(val) || 0 })} 
-                  />
-                </div>
-              </div>
+          {/* Right: Data Panel */}
+          <div className="w-full lg:w-[340px] bg-[#111111] border-t lg:border-t-0 lg:border-l border-white/5 p-4 flex flex-col overflow-hidden">
+            <div className="shrink-0 mb-4">
+              <h3 className="text-lg font-black text-white uppercase">Datos OCR</h3>
+              <div className="w-8 h-0.5 bg-brand-accent" />
             </div>
 
-            <div className="pt-10">
-              <motion.button
-                whileHover={{ scale: 1.02, y: -2 }}
-                whileTap={{ scale: 0.98 }}
-                type="button"
-                onClick={(e) => {
-                  e.preventDefault();
-                  onClose();
-                }}
-                className="w-full py-6 bg-brand-accent text-white rounded-[24px] font-black text-sm uppercase tracking-[0.3em] shadow-[0_20px_40px_rgba(16,185,129,0.3)] hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-4 group"
-              >
-                <CheckCircle2 size={24} className="group-hover:rotate-12 transition-transform" /> 
-                Verificado • Importar al Formulario
-              </motion.button>
+            <div className="flex-1 overflow-y-auto space-y-4 pr-2">
+              <QuickEditField 
+                label="Categoría" 
+                value={data.category} 
+                options={['CALZADO', 'ACCESORIOS', 'STREETWEAR', 'COLECCIONABLES', 'OTROS']}
+                onChange={val => onUpdate({ category: val })} 
+              />
+              
+              <QuickEditField 
+                label="Marca" 
+                value={data.brand} 
+                placeholder="Ej: Nike"
+                onChange={val => onUpdate({ brand: val })} 
+              />
+              <QuickEditField 
+                label="Modelo" 
+                value={data.name} 
+                placeholder="Air Jordan 1..."
+                onChange={val => onUpdate({ name: val })} 
+              />
+
+              <QuickEditField 
+                label="Género" 
+                value={data.gender || 'UNISEX'} 
+                options={['HOMBRE', 'MUJER', 'UNISEX', 'KIDS']}
+                onChange={val => onUpdate({ gender: val })} 
+              />
+              <QuickEditField 
+                label="Color" 
+                value={data.color_description || ''} 
+                placeholder="Negro"
+                onChange={val => onUpdate({ color_description: val.toUpperCase() })} 
+              />
+              
+              <QuickEditField 
+                label="Talla" 
+                value={data.size || ''} 
+                placeholder="10"
+                onChange={val => onUpdate({ size: val })} 
+              />
+
+              <QuickEditField 
+                label="Precio USD" 
+                value={data.buyPriceUsd?.toString() || ''} 
+                placeholder="0.00"
+                onChange={val => onUpdate({ buyPriceUsd: parseFloat(val) || 0 })} 
+              />
             </div>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-full py-3 mt-4 bg-brand-accent text-white rounded-xl font-black text-xs uppercase tracking-wider"
+            >
+              Confirmar
+            </button>
           </div>
         </div>
       </motion.div>

@@ -100,7 +100,7 @@ export function Dashboard({ products, onNavigate }: DashboardProps) {
              <h3 className="font-bold text-xs lg:text-sm tracking-tight text-brand-ink">Distribución por Status</h3>
           </div>
           <div className="flex-1 w-full min-h-[250px]">
-            <ResponsiveContainer width="99%" height="100%">
+            <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
                   data={statusData}
@@ -126,7 +126,7 @@ export function Dashboard({ products, onNavigate }: DashboardProps) {
              <h3 className="font-bold text-xs lg:text-sm tracking-tight text-brand-ink">Niveles de Inventario</h3>
           </div>
           <div className="flex-1 w-full min-h-[250px]">
-            <ResponsiveContainer width="99%" height="100%">
+            <ResponsiveContainer width="100%" height="100%">
               <BarChart data={stockData}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="currentColor" className="opacity-10" />
                 <XAxis dataKey="name" fontSize={10} tickLine={false} axisLine={false} tick={{fill: 'var(--brand-muted)'}} />
