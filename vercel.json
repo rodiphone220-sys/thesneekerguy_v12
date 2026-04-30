@@ -1,18 +1,26 @@
 {
+  "framework": "vite",
   "buildCommand": "npm run build",
-  "devCommand": "npm run dev",
+  "outputDirectory": "dist",
   "installCommand": "npm install",
-  "framework": null,
-  "builds": [
-    {
-      "src": "server.ts",
-      "use": "@vercel/express"
-    }
-  ],
+  "devCommand": "npm run dev",
   "routes": [
     {
+      "src": "/api/(.*)",
+      "dest": "/api/$1"
+    },
+    {
       "src": "/(.*)",
-      "dest": "server.ts"
+      "dest": "/index.html"
     }
-  ]
+  ],
+  "env": {
+    "GOOGLE_SHEETS_ID": "@google-sheets-id",
+    "GOOGLE_SERVICE_ACCOUNT_EMAIL": "@google-service-account-email",
+    "GOOGLE_PRIVATE_KEY": "@google-private-key",
+    "CLOUDINARY_CLOUD_NAME": "@cloudinary-cloud-name",
+    "CLOUDINARY_API_KEY": "@cloudinary-api-key",
+    "CLOUDINARY_API_SECRET": "@cloudinary-api-secret",
+    "VERCEL": "1"
+  }
 }
